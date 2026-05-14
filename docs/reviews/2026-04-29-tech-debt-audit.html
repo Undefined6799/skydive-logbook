@@ -1,0 +1,527 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Tech debt audit — 2026-04-29</title>
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<style>
+  :root {
+    --bg: #0b0d0f;
+    --panel: #14171b;
+    --panel-2: #1a1e23;
+    --border: #2a2f36;
+    --text: #e7e7e8;
+    --muted: #8b9199;
+    --hi: #6b7280;
+    --accent: #6ea8ff;
+    --hi-blocker: #ef4444;
+    --hi-major: #f59e0b;
+    --hi-minor: #65a30d;
+    --hi-low: #6b7280;
+    --row: #11141a;
+    --row-alt: #161a20;
+    --hover: #1f242b;
+  }
+  * { box-sizing: border-box; }
+  html, body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif;
+    margin: 0;
+    line-height: 1.5;
+  }
+  body { padding: 32px 40px 80px; max-width: 1400px; margin: 0 auto; }
+  h1 { font-size: 28px; font-weight: 600; margin: 0 0 4px; letter-spacing: -0.01em; }
+  h2 { font-size: 18px; font-weight: 600; margin: 32px 0 12px; letter-spacing: -0.005em; }
+  h3 { font-size: 14px; font-weight: 600; margin: 16px 0 6px; color: var(--muted); text-transform: uppercase; letter-spacing: 0.04em; }
+  p { color: var(--muted); margin: 4px 0; }
+  .sub { color: var(--muted); font-size: 13px; }
+  .mono { font-family: ui-monospace, "SF Mono", Menlo, monospace; font-size: 12px; }
+  code { font-family: ui-monospace, "SF Mono", Menlo, monospace; font-size: 12px; background: var(--panel-2); padding: 1px 5px; border-radius: 3px; color: #d6e4ff; }
+
+  .stats {
+    display: grid;
+    grid-template-columns: repeat(6, 1fr);
+    gap: 12px;
+    margin: 24px 0 8px;
+  }
+  .stat {
+    background: var(--panel);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 12px 14px;
+  }
+  .stat .v { font-size: 22px; font-weight: 600; line-height: 1; }
+  .stat .l { font-size: 11px; color: var(--muted); text-transform: uppercase; letter-spacing: 0.04em; margin-top: 4px; }
+
+  .legend { display: flex; gap: 16px; flex-wrap: wrap; font-size: 12px; color: var(--muted); margin: 16px 0 8px; align-items: center; }
+  .legend .pip { width: 10px; height: 10px; border-radius: 2px; display: inline-block; vertical-align: middle; margin-right: 6px; }
+
+  .controls {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    margin: 16px 0 12px;
+    align-items: center;
+  }
+  .controls .filter {
+    display: flex;
+    gap: 6px;
+    flex-wrap: wrap;
+  }
+  .pill {
+    background: var(--panel);
+    border: 1px solid var(--border);
+    color: var(--text);
+    padding: 6px 12px;
+    border-radius: 999px;
+    font-size: 12px;
+    font-weight: 500;
+    cursor: pointer;
+    user-select: none;
+  }
+  .pill:hover { background: var(--hover); border-color: #3a414a; }
+  .pill[aria-pressed="true"] { background: #1d2a44; border-color: #2c4a8a; color: #cfe0ff; }
+
+  .controls input[type=search] {
+    flex: 1;
+    min-width: 200px;
+    background: var(--panel);
+    border: 1px solid var(--border);
+    color: var(--text);
+    padding: 7px 12px;
+    border-radius: 6px;
+    font-size: 13px;
+  }
+  .controls input[type=search]:focus { outline: 2px solid var(--accent); outline-offset: 1px; }
+
+  table {
+    width: 100%;
+    border-collapse: collapse;
+    background: var(--panel);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    overflow: hidden;
+  }
+  thead th {
+    background: var(--panel-2);
+    color: var(--muted);
+    text-align: left;
+    font-size: 11px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    padding: 10px 12px;
+    border-bottom: 1px solid var(--border);
+    cursor: pointer;
+    white-space: nowrap;
+    position: sticky; top: 0; z-index: 1;
+  }
+  thead th:hover { color: var(--text); }
+  thead th .arr { font-size: 10px; opacity: 0.6; margin-left: 3px; }
+  tbody tr { background: var(--row); }
+  tbody tr:nth-child(even) { background: var(--row-alt); }
+  tbody tr:hover { background: var(--hover); }
+  tbody td {
+    padding: 9px 12px;
+    border-top: 1px solid var(--border);
+    font-size: 13px;
+    vertical-align: top;
+  }
+  td.id { font-family: ui-monospace, "SF Mono", Menlo, monospace; font-size: 11px; color: var(--muted); white-space: nowrap; width: 60px; }
+  td.cat { font-size: 11px; text-transform: uppercase; letter-spacing: 0.04em; font-weight: 500; white-space: nowrap; width: 110px; }
+  td.title { font-weight: 500; }
+  td.title small { display: block; color: var(--muted); font-weight: 400; margin-top: 3px; line-height: 1.45; font-size: 12px; }
+  td.num { text-align: center; font-variant-numeric: tabular-nums; width: 60px; }
+  td.pri { text-align: center; font-weight: 600; font-variant-numeric: tabular-nums; width: 70px; }
+  td.phase { white-space: nowrap; font-size: 12px; color: var(--muted); width: 80px; text-align: center; }
+
+  .pri-cell { display: inline-block; min-width: 32px; padding: 2px 8px; border-radius: 4px; }
+  .p-blocker { background: rgba(239,68,68,0.15); color: #fca5a5; }
+  .p-major { background: rgba(245,158,11,0.15); color: #fcd34d; }
+  .p-minor { background: rgba(101,163,13,0.15); color: #bef264; }
+  .p-low { background: rgba(107,114,128,0.18); color: #cbd5e1; }
+
+  .cat-DEP { color: #fca5a5; }
+  .cat-INFRA { color: #fcd34d; }
+  .cat-ARCH { color: #c4b5fd; }
+  .cat-CODE { color: #93c5fd; }
+  .cat-TEST { color: #6ee7b7; }
+  .cat-DOC { color: #f9a8d4; }
+
+  .phases {
+    display: grid;
+    grid-template-columns: repeat(2, 1fr);
+    gap: 14px;
+    margin-top: 8px;
+  }
+  .phase-card {
+    background: var(--panel);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 14px 16px;
+  }
+  .phase-card h4 { margin: 0 0 4px; font-size: 13px; font-weight: 600; letter-spacing: -0.005em; }
+  .phase-card .when { color: var(--muted); font-size: 11px; text-transform: uppercase; letter-spacing: 0.04em; margin-bottom: 10px; }
+  .phase-card ul { margin: 0; padding-left: 18px; }
+  .phase-card li { font-size: 12.5px; line-height: 1.55; margin: 3px 0; color: #c4cad2; }
+  .phase-card li code { font-size: 11px; }
+
+  details { background: var(--panel); border: 1px solid var(--border); border-radius: 8px; margin: 8px 0; padding: 0; }
+  details > summary { padding: 10px 14px; cursor: pointer; font-weight: 500; font-size: 13px; user-select: none; }
+  details > summary:hover { color: #fff; }
+  details[open] > summary { border-bottom: 1px solid var(--border); }
+  details > div { padding: 12px 14px; font-size: 12.5px; color: #c4cad2; }
+  details ul { margin: 4px 0 4px 16px; padding: 0; }
+  details li { margin: 3px 0; line-height: 1.55; }
+
+  .row-hidden { display: none; }
+  .footer-note { font-size: 11px; color: var(--muted); margin-top: 32px; text-align: center; line-height: 1.6; }
+  .footer-note code { font-size: 10px; }
+
+  @media (max-width: 900px) {
+    body { padding: 16px; }
+    .stats { grid-template-columns: repeat(2, 1fr); }
+    .phases { grid-template-columns: 1fr; }
+    td.num, td.pri, td.phase { width: auto; }
+  }
+</style>
+</head>
+<body>
+
+<header>
+  <h1>Tech debt audit — skydive-logbook</h1>
+  <p class="sub">2026-04-29 — whole project (backend + frontend + infra) — horizon: v0.1 ship + post-ship phases</p>
+</header>
+
+<div class="stats" id="stats"></div>
+
+<div class="legend" id="legend">
+  <span><span class="pip" style="background:#fca5a5"></span>Dependency</span>
+  <span><span class="pip" style="background:#fcd34d"></span>Infrastructure</span>
+  <span><span class="pip" style="background:#c4b5fd"></span>Architecture</span>
+  <span><span class="pip" style="background:#93c5fd"></span>Code</span>
+  <span><span class="pip" style="background:#6ee7b7"></span>Test</span>
+  <span><span class="pip" style="background:#f9a8d4"></span>Documentation</span>
+  <span style="margin-left:auto">Priority = (Impact + Risk) × (6 - Effort) — higher is more urgent</span>
+</div>
+
+<div class="controls">
+  <div class="filter" id="cat-filter">
+    <span class="pill" data-cat="all" aria-pressed="true">All</span>
+    <span class="pill" data-cat="DEP">Dependency</span>
+    <span class="pill" data-cat="INFRA">Infrastructure</span>
+    <span class="pill" data-cat="ARCH">Architecture</span>
+    <span class="pill" data-cat="CODE">Code</span>
+    <span class="pill" data-cat="TEST">Test</span>
+    <span class="pill" data-cat="DOC">Documentation</span>
+  </div>
+  <input type="search" id="search" placeholder="Search items, IDs, files…">
+</div>
+
+<table id="debt-table">
+  <thead>
+    <tr>
+      <th data-sort="id">ID <span class="arr">▾</span></th>
+      <th data-sort="category">Category</th>
+      <th data-sort="title">Item</th>
+      <th data-sort="impact" class="num">Impact</th>
+      <th data-sort="risk" class="num">Risk</th>
+      <th data-sort="effort" class="num">Effort</th>
+      <th data-sort="priority" class="num">Priority <span class="arr">▾</span></th>
+      <th data-sort="phase" class="num">Phase</th>
+    </tr>
+  </thead>
+  <tbody id="debt-body"></tbody>
+</table>
+
+<h2>Phased remediation plan</h2>
+<p class="sub">Each phase is a self-contained slice that can be picked up by one of the project's subagents. Estimates assume one engineer working in the project's small-increment cadence (CLAUDE.md §3).</p>
+
+<div class="phases">
+  <div class="phase-card">
+    <h4>Phase 0 — Pre-ship critical</h4>
+    <div class="when">~1 day · before any other v0.1 work</div>
+    <ul>
+      <li><b>DEP-1.</b> Tighten <code>python-multipart&gt;=0.0.26</code> in <code>pyproject.toml</code> (3 CVEs fixed). 5 min.</li>
+      <li><b>INFRA-1.</b> Add <code>.github/workflows/ci.yml</code> running <code>pytest</code> + <code>ruff check backend</code> on push and PR. 1 hr. (HANDOFF.md flagged this; still missing.)</li>
+      <li><b>ARCH-1.</b> Wire <code>reindex_from_xml</code> into <code>backend/main.py</code> when <code>schema_was_rebuilt=True</code>; refuse to start on reindex failure per D26. Update the stale "does not exist yet" staging comment. 30 min + tests.</li>
+      <li><b>DEP-3.</b> Run <code>uv pip audit</code> over the rest of the lock; pin floors to current safe versions. 15 min.</li>
+      <li><b>INFRA-2/3/4.</b> Clean <code>.gitignore</code>: add <code>frontend/node_modules</code>, <code>frontend/dist</code>, <code>frontend/.vite</code>, <code>frontend/vite.config.js.timestamp-*.mjs</code>, <code>.venv-*</code>; <code>git rm</code> the 36 stray vite timestamp files. 15 min.</li>
+      <li><b>CODE-9.</b> Fix the 4 ruff errors so <code>ruff check backend</code> is genuinely green again before CI gates land. 5 min.</li>
+    </ul>
+  </div>
+
+  <div class="phase-card">
+    <h4>Phase 1 — Test debt the invariants demand</h4>
+    <div class="when">~1 week</div>
+    <ul>
+      <li><b>TEST-1.</b> Extend <code>_crash_child.py</code> + <code>test_crash_recovery.py</code> with crash points for <code>update_jump</code> (after_xml_write / after_manifest / after_rename) and <code>delete_jump</code> (after_trash_move). CLAUDE.md §7 mandate.</li>
+      <li><b>TEST-2.</b> Same harness extension for D44 dropzone create/update — same crash class as <code>update_jump</code>.</li>
+      <li><b>TEST-4.</b> Pin "XML failing XSD never reaches disk" — monkey-patch a model to emit invalid XML, assert <code>ValidationFailedError</code> + folder absent.</li>
+      <li><b>TEST-5.</b> NFC round-trip test — title given as NFD, asserted on disk as NFC bytes.</li>
+      <li><b>TEST-6.</b> DOCTYPE-in-CDATA pinning test — documents the validator's intent so a future refactor cannot silently change posture.</li>
+    </ul>
+  </div>
+
+  <div class="phase-card">
+    <h4>Phase 2 — Documentation alignment</h4>
+    <div class="when">~3 days · best done as small PRs alongside Phase 1</div>
+    <ul>
+      <li><b>DOC-1.</b> Rewrite <code>README.md</code>: stack table claims TypeScript / Zod / TanStack Query but actual frontend is plain JS + Tailwind + Lucide; the "dev commands" section says "not implemented yet" but the backend ships and the launcher exists. Bring it up to actual.</li>
+      <li><b>DOC-2.</b> <code>ARCHITECTURE.md</code> directory tree shows <code>frontend/src/</code> as TypeScript and ARCH text says "not yet scaffolded" — both stale. Either delete those sections or replace with the real shape.</li>
+      <li><b>DOC-3.</b> <code>HANDOFF.md</code> is dated end-of-Phase-3.6 with 32 D-entries; project is now at D47 with R.0 of Rig Manager feature-complete and R.1+ underway. Refresh or supersede.</li>
+      <li><b>DOC-4.</b> <code>atomic_write</code> docstring already names the Windows MoveFileExW caveat; add a paragraph for Darwin <code>fsync(2)</code> + parent-dir fsync trade-offs (cited primary sources in 2026-04-23 forward review §A3, §A4).</li>
+      <li><b>DOC-5.</b> New D-entry: cloud-sync deployment posture (WAL on Dropbox/iCloud/OneDrive — three options canvassed in forward-review §D1).</li>
+      <li><b>DOC-6.</b> New D-entry: intra-process concurrency model — closes ARCH-4 by construction.</li>
+    </ul>
+  </div>
+
+  <div class="phase-card">
+    <h4>Phase 3 — Code hygiene</h4>
+    <div class="when">~1 week · pick up between feature slices</div>
+    <ul>
+      <li><b>CODE-3.</b> <code>backend/storage/trash.py</code>: replace <code>strftime("%Y%m%dT%H%M%SZ")</code> with the canonical <code>_now_utc_iso()</code> helper (D17).</li>
+      <li><b>CODE-5.</b> Add <code>.DS_Store</code>, <code>Thumbs.db</code>, <code>desktop.ini</code>, <code>.AppleDouble</code>, <code>._*</code> to <code>_FOLDER_EXCLUDES</code> in <code>storage/verify.py</code>.</li>
+      <li><b>CODE-7.</b> <code>PRAGMA busy_timeout = 250</code> in <code>open_index</code> — cost-free insurance.</li>
+      <li><b>CODE-2.</b> <code>atomic_write</code> + <code>atomic_write_stream</code>: optional <code>fcntl(F_FULLFSYNC)</code> on Darwin and a parent-dir fsync after <code>os.replace</code> (gated by feature flag if a perf concern).</li>
+      <li><b>CODE-4.</b> <code>sanitize_folder_name</code> takes <code>max_bytes=255</code>; raises <code>ValueError</code> with a clean message instead of an obscure <code>OSError</code> from <code>mkdir</code>.</li>
+      <li><b>CODE-8.</b> RFC 6901 pointer escaping (<code>~ → ~0</code>, <code>/ → ~1</code>) in <code>backend/api/errors.py</code> field-pointer construction. Latent today, blocks adding any field whose name contains those chars.</li>
+    </ul>
+  </div>
+
+  <div class="phase-card">
+    <h4>Phase 4 — Pre-v0.1 ship blockers</h4>
+    <div class="when">~2 weeks · gates the actual public release</div>
+    <ul>
+      <li><b>INFRA-6.</b> First-run UX folder picker wired into <code>main.py</code> — today the launcher assumes <code>config.toml</code> already exists (HANDOFF.md gotcha).</li>
+      <li><b>INFRA-5.</b> PyInstaller spec per D11 (per-platform .app / .exe / AppImage). <code>datas</code> must include <code>backend/xml/schema/</code> and <code>backend/storage/templates/</code>.</li>
+      <li><b>TEST-3.</b> Smoke test for <code>backend/scripts/launch_desktop.py</code> (605 lines, zero tests, riskiest cross-platform surface).</li>
+      <li><b>TEST-8.</b> Vitest "render-and-import" smoke test per frontend view to catch import drift (already named in <code>frontend/README.md</code> §Known follow-ups).</li>
+      <li><b>ARCH-3.</b> Bearer-auth scope: either drop the <code>bearerAuth</code> security scheme from <code>openapi.py</code> or write a D-entry pinning enforcement (loopback-only short-circuit). Today the spec promises something the code does not deliver.</li>
+      <li><b>ARCH-4.</b> Decide intra-process concurrency posture for <code>update_jump</code>: in-process writer lock, OR reorder index-update before rename. Document in DOC-6's new D-entry.</li>
+      <li><b>ARCH-5.</b> GET attachment download endpoint — verify intent. Today the user can't preview a jump video in-app; either ship a streaming GET with Content-Disposition or document "use Reveal in Finder".</li>
+      <li><b>INFRA-7.</b> App icon, version metadata, code-signing per platform. Worth a D-entry when they land.</li>
+      <li><b>CODE-6.</b> <code>summary.md</code> per D5: write best-effort on create or supersede D5 with explicit "post-v0.1".</li>
+    </ul>
+  </div>
+
+  <div class="phase-card">
+    <h4>Phase 5 — Post-v0.1 / longer-term</h4>
+    <div class="when">no fixed date · fold into v0.2 or sooner if a slice naturally touches one</div>
+    <ul>
+      <li><b>ARCH-2.</b> D24 <code>_hints</code> channel: ship the one v0.1 hint (<code>non_sequential_jump_number</code>) or supersede D24. The decision matters more than the implementation.</li>
+      <li><b>DEP-2.</b> Add <code>mypy</code> (or <code>pyright</code>) with <code>strict = true</code> to <code>pyproject.toml</code>; gate in CI. Multi-hour effort but high leverage on a service-layer-heavy codebase.</li>
+      <li><b>CODE-1.</b> <code>open_index</code> per-call connection: <code>jump_service</code> opens up to 3 connections per request. A per-request connection dependency is the cleaner shape — defer until a stats endpoint makes the cost visible.</li>
+      <li><b>TEST-7.</b> Parent-process SIGKILL → next start works. Conceptually covered by <code>_crash_child.py</code> for write primitives; no top-level test.</li>
+      <li><b>INFRA-8.</b> Three coexisting <code>.venv</code> folders (<code>.venv</code>, <code>.venv-sandbox</code>, <code>.venv-test</code>) — pick one and document it.</li>
+      <li><b>DOC-7.</b> Refresh the auto-memory snapshot — <code>project_skydive_logbook.md</code> still says "Phase 3.5 / next 3.6 reindex" but project is well past that.</li>
+    </ul>
+  </div>
+</div>
+
+<h2>Methodology &amp; verifications</h2>
+
+<details>
+<summary>How items were sourced and scored</summary>
+<div>
+<p><b>Sources.</b> First-hand reads of <code>backend/</code> (60+ Python files, focusing on <code>main.py</code>, <code>api/rest.py</code>, <code>api/errors.py</code>, <code>services/jump_service.py</code>, <code>storage/filesystem.py</code>, <code>storage/index.py</code>, <code>observability/logging.py</code>, <code>xml/validator.py</code>); the project's own <code>reviews/</code> folder (which already contains a 2026-04-23 forward review and a 2026-04-28 deep review covering most of the same surface); current state of <code>frontend/</code>; <code>pyproject.toml</code>, <code>.gitignore</code>, project-root markdown.</p>
+<p><b>Scoring.</b> Per the engineering:tech-debt skill rubric: Impact (1–5, how much does it slow the team / hurt UX) × Risk (1–5, what happens if not fixed) × inverted Effort (1–5, lower effort = higher priority). Formula: <code>(Impact + Risk) × (6 - Effort)</code>.</p>
+<p><b>Bar.</b> Real concerns with a file:line + D-entry / RFC / WCAG citation. Nitpicks dropped. Items already resolved since the 2026-04-28 deep review (D16 catch-all, equipment_service stub, R.0 Rig Manager models) are excluded.</p>
+</div>
+</details>
+
+<details>
+<summary>What was verified against current code (not just trusted from prior reviews)</summary>
+<div>
+<ul>
+  <li><code>pyproject.toml:23</code> — <code>python-multipart&gt;=0.0.9</code> still in place.</li>
+  <li><code>backend/main.py:67–92</code> — staging WARNING for <code>reindex_from_xml</code> still present; <code>services/reindex_service.py:174</code> defines <code>reindex_from_xml</code>. Drift is the wiring, not the function.</li>
+  <li><code>grep _hints | build_hint | non_sequential_jump_number</code> across <code>backend/</code> — zero matches. D24 still entirely on paper.</li>
+  <li><code>backend/storage/verify.py</code> <code>_FOLDER_EXCLUDES</code> — confirmed missing OS-noise filenames.</li>
+  <li><code>backend/storage/trash.py:43,80</code> — confirmed two <code>strftime("%Y%m%dT%H%M%SZ")</code> calls (D17 drift).</li>
+  <li><code>backend/services/jump_service.py</code> — confirmed <code>summary.md</code> only mentioned in comments; no actual write.</li>
+  <li><code>backend/api/jumps.py:347</code> — confirmed <code>/{jump_id}/attachments/{filename}</code> exists for DELETE only; no GET equivalent.</li>
+  <li><code>.github/</code> directory — confirmed absent.</li>
+  <li><code>pyproject.toml</code> — confirmed no <code>[tool.mypy]</code> or <code>[tool.pyright]</code>.</li>
+  <li><code>frontend/</code> — counted 36 <code>vite.config.js.timestamp-*.mjs</code> files (deep review said 12; situation has worsened).</li>
+  <li><code>.venv-test/bin/ruff check backend</code> — found 4 errors today, contradicting HANDOFF.md's "0 ruff warnings" claim.</li>
+  <li>Rig Manager R.0 — verified all per-kind models, services, XSD types now exist; deep-review's 2026-04-28 "blocker" finding has been substantially addressed (<code>aad_rules.py</code> per D39 is the remaining gap).</li>
+</ul>
+</div>
+</details>
+
+<details>
+<summary>Items deliberately excluded</summary>
+<div>
+<ul>
+  <li><b>Already fixed since 2026-04-28 deep review</b> — D16 catch-all in <code>rest.py</code>, <code>equipment_service.py</code> stub deletion, R.0 Rig Manager models + services, D44 dropzones end-to-end.</li>
+  <li><b>Out of v0.1 scope (D14 §Deferred)</b> — FlySight CSV parsing, digital signing (D6 reserved), multi-user, imports, video thumbnails, mobile, headless server, auto-update.</li>
+  <li><b>Frontend a11y / UX</b> — covered exhaustively by 2026-04-28 deep review §3.7–3.9 and the 2026-04-28-frontend-wcag-audit. Not re-scored here to avoid duplication; the engineering:tech-debt skill brief is the right home for cross-cutting code-health items, not WCAG line-items.</li>
+  <li><b>Nits</b> — dead <code>monkeypatch</code> param on <code>test_create_jump.py:245</code>, two defensible <code>f"…"</code> SQL sites in <code>storage/index.py</code>, etc. Real fixes; not worth a phase entry.</li>
+</ul>
+</div>
+</details>
+
+<p class="footer-note">
+Generated 2026-04-29 · Lives in <code>reviews/2026-04-29-tech-debt-audit.html</code> · Open in any browser. Click column headers to sort, click a category pill to filter, type to search. Sortable on every numeric column.
+</p>
+
+<script>
+// Each item: id, category, title, detail, impact, risk, effort, phase
+const ITEMS = [
+  {id:"DEP-1", category:"DEP", title:"python-multipart floor admits 3 CVEs", detail:"<code>pyproject.toml:23</code> pins <code>&gt;=0.0.9</code>; uv.lock today resolves to 0.0.26 but a fresh <code>uv sync --upgrade</code> can land on a vulnerable version. CVE-2024-24762 (ReDoS), CVE-2024-53981 (boundary DoS), CVE-2026-40347 (preamble parse stall, fixed 0.0.26).", impact:4, risk:5, effort:1, phase:"P0"},
+  {id:"INFRA-1", category:"INFRA", title:"No CI workflow", detail:"<code>.github/</code> does not exist. No matrix run on push or PR. HANDOFF.md flagged it as a deployment prerequisite; still absent. The #1 release-infra gap.", impact:5, risk:4, effort:2, phase:"P0"},
+  {id:"ARCH-1", category:"ARCH", title:"D26 reindex_from_xml not wired into startup", detail:"<code>main.py:67–92</code> logs a WARNING when the index schema rebuilds and continues to <code>uvicorn.run</code>. <code>services/reindex_service.py:174</code> already has <code>reindex_from_xml</code>. After a v0.2 schema bump the app would serve queries against an empty index until manual reindex.", impact:4, risk:4, effort:2, phase:"P0"},
+  {id:"DEP-3", category:"DEP", title:"Other dep CVE audit not run", detail:"Only python-multipart was audited. <code>lxml</code> (XXE history), <code>fastapi</code>, <code>pydantic</code>, <code>filelock</code> floors not checked. <code>uv pip audit</code>, ~5 minutes.", impact:2, risk:3, effort:1, phase:"P0"},
+  {id:"DOC-1", category:"DOC", title:"README.md stack drift", detail:"README claims <i>TypeScript (strict) + React Hook Form + Zod + TanStack Query</i>; actual frontend is plain JS, no react-hook-form, no zod, no @tanstack/react-query. Dev-commands section says \"Not implemented yet\" — backend and launcher both ship.", impact:3, risk:2, effort:1, phase:"P2"},
+  {id:"ARCH-3", category:"ARCH", title:"Bearer auth advertised in OpenAPI but not enforced", detail:"<code>openapi.py:117–124</code> declares <code>bearerAuth</code>; <code>deps.py:get_user_id</code> returns <code>\"default\"</code> without reading any header; <code>config.api_key</code> is unused. User flips <code>bind_host</code> to non-loopback → unauthenticated LAN exposure.", impact:3, risk:3, effort:2, phase:"P4"},
+  {id:"INFRA-6", category:"INFRA", title:"No first-run folder-picker UX", detail:"<code>main.py</code> assumes <code>config.toml</code> exists. A first-run user has no UI to select their logbook folder. Blocks ship of the desktop bundle.", impact:4, risk:3, effort:3, phase:"P4"},
+  {id:"TEST-4", category:"TEST", title:"No XSD-rejection write-path test", detail:"Invariant 2 (CLAUDE.md §5): \"every XML we produce is validated against the XSD before the atomic write\". Hardened parser has rejection tests; the write-path's refusal does not.", impact:2, risk:2, effort:1, phase:"P1"},
+  {id:"TEST-5", category:"TEST", title:"No NFC round-trip test", detail:"D4 mandates NFC on every write. Nothing asserts that a title in NFD form (<code>Cafe\\u0301</code>) round-trips as NFC bytes (<code>Caf\\u00e9</code>) on disk.", impact:2, risk:2, effort:1, phase:"P1"},
+  {id:"INFRA-4", category:"INFRA", title:".venv-sandbox / .venv-test not in .gitignore", detail:"Root <code>.gitignore</code> has only <code>.venv/</code>; <code>.venv-sandbox/</code> and <code>.venv-test/</code> coexist on disk and aren't ignored.", impact:2, risk:2, effort:1, phase:"P0"},
+  {id:"TEST-2", category:"TEST", title:"No crash-path tests for D44 dropzone CRUD", detail:"Dropzone create/update is a multi-step write (serialize → validate → atomic_write → index upsert). Same crash class as <code>update_jump</code>. CLAUDE.md §7 mandate.", impact:3, risk:3, effort:3, phase:"P1"},
+  {id:"ARCH-4", category:"ARCH", title:"update_jump rename/index race window", detail:"<code>jump_service.update_jump</code> step 8 (<code>os.rename</code>) precedes step 9 (index UPDATE). Concurrent <code>get_jump</code> on the same process threadpool reads the old folder path and 500s. D9 covers inter-process; nothing covers intra-process.", impact:3, risk:3, effort:3, phase:"P4"},
+  {id:"TEST-8", category:"TEST", title:"Frontend has zero tests", detail:"<code>frontend/README.md</code> §Known follow-ups names \"Vitest with one render-and-import smoke test per view\". None exist. Import drift goes unnoticed until manual run.", impact:3, risk:3, effort:3, phase:"P4"},
+  {id:"TEST-1", category:"TEST", title:"No crash-path tests for update_jump / delete_jump", detail:"<code>_crash_child.py</code> has only the three <code>create_jump</code> crash points. <code>update_jump</code> is a 9-step write; <code>delete_jump</code> is two-step. CLAUDE.md §7 mandates the test for each multi-file write.", impact:4, risk:4, effort:4, phase:"P1"},
+  {id:"TEST-3", category:"TEST", title:"Zero tests for launch_desktop.py", detail:"605 lines, cross-platform (npm install, vite build, pywebview window, folder picker, JS bridge). The riskiest \"won't package cleanly\" surface and untested.", impact:4, risk:4, effort:4, phase:"P4"},
+  {id:"INFRA-5", category:"INFRA", title:"No PyInstaller spec (D11)", detail:"Per-platform bundlers don't exist. <code>datas</code> must include <code>backend/xml/schema/</code> and <code>backend/storage/templates/</code> so XSDs/README templates ship with the binary.", impact:5, risk:3, effort:4, phase:"P4"},
+  {id:"CODE-2", category:"CODE", title:"atomic_write missing parent-dir fsync + Darwin F_FULLFSYNC", detail:"<code>storage/filesystem.py</code> fsyncs the file before <code>os.replace</code> but not the parent directory; on Darwin BSD <code>fsync(2)</code> doesn't flush to platter (SQLite's <code>fullfsync</code> pragma cites this). Real-world risk on external/portable drives.", impact:2, risk:2, effort:2, phase:"P3"},
+  {id:"DOC-5", category:"DOC", title:"No D-entry on cloud-sync deployment posture", detail:"WAL mode + Dropbox/iCloud/OneDrive is documented-incompatible (SQLite WAL §8). README is silent. Three options canvassed in 2026-04-23 forward-review §D1 — pick one in a D-entry.", impact:2, risk:2, effort:2, phase:"P2"},
+  {id:"DOC-6", category:"DOC", title:"No D-entry on intra-process concurrency model", detail:"D9 covers inter-process locking only. Closes ARCH-4 by construction (\"writes are serialised by an in-process writer lock at the service layer\" or equivalent).", impact:2, risk:2, effort:2, phase:"P2"},
+  {id:"TEST-6", category:"TEST", title:"No DOCTYPE-in-CDATA pinning test", detail:"<code>xml/validator.py:39</code> rejects any <code>&lt;!DOCTYPE</code> byte sequence; docstring acknowledges the CDATA false-positive. No test pins the intended behaviour, so a future parser refactor could silently change it.", impact:1, risk:2, effort:1, phase:"P1"},
+  {id:"CODE-5", category:"CODE", title:"_FOLDER_EXCLUDES missing OS-noise filenames", detail:"<code>storage/verify.py:_FOLDER_EXCLUDES</code> excludes only <code>jump.xml</code>, <code>SHA256SUMS</code>, <code>summary.md</code>. Every Finder/Explorer browse adds <code>.DS_Store</code>/<code>Thumbs.db</code>/<code>desktop.ini</code>; verify reports them as <code>orphan_file</code>. UX friction trains users to ignore real findings.", impact:2, risk:1, effort:1, phase:"P3"},
+  {id:"CODE-7", category:"CODE", title:"PRAGMA busy_timeout unset (defaults to 0)", detail:"Under the current single-process + lockfile pattern, SQLITE_BUSY is unreachable. Setting <code>busy_timeout=250</code> now is cost-free insurance against future intra-process concurrency.", impact:1, risk:2, effort:1, phase:"P3"},
+  {id:"INFRA-3", category:"INFRA", title:"Root .gitignore missing frontend dirs", detail:"<code>frontend/node_modules</code>, <code>frontend/dist</code>, <code>frontend/.vite</code> only ignored by <code>frontend/.gitignore</code> — depends on git-config inheritance. Belt-and-braces in root <code>.gitignore</code> is safer.", impact:1, risk:2, effort:1, phase:"P0"},
+  {id:"DOC-2", category:"DOC", title:"ARCHITECTURE.md frontend section is stale", detail:"Directory tree shows <code>units.ts</code> + TypeScript sources; ARCH text claims \"frontend (deferred per D14; not yet scaffolded)\". Both wrong — frontend is JS-based and shipped.", impact:2, risk:1, effort:1, phase:"P2"},
+  {id:"DOC-3", category:"DOC", title:"HANDOFF.md is 6 days stale", detail:"Dated 2026-04-23 \"end of Phase 3.6\" with 32 D-entries; current state is D47 with R.0 Rig Manager feature-complete and R.1+ underway. \"440 tests passing\" — actual is 1228.", impact:2, risk:1, effort:1, phase:"P2"},
+  {id:"DOC-4", category:"DOC", title:"atomic_write docstring missing fsync caveats", detail:"Docstring already names the Windows MoveFileExW caveat. Add a paragraph for Darwin <code>fsync(2)</code> + parent-dir fsync trade-offs (cited primary sources).", impact:1, risk:2, effort:1, phase:"P2"},
+  {id:"ARCH-2", category:"ARCH", title:"D24 _hints channel completely unimplemented", detail:"D24 prescribes <code>_hints: list[Hint]</code> on write responses with the v0.1 code <code>non_sequential_jump_number</code>. Zero matches across <code>backend/</code> for <code>_hints</code>, <code>build_hint</code>, <code>Hint</code>, or the code string.", impact:2, risk:2, effort:3, phase:"P5"},
+  {id:"ARCH-5", category:"ARCH", title:"No GET attachment download endpoint", detail:"Routes are POST/GET-list/GET-single/PUT/POST-attachments/POST-track/DELETE-attachment/DELETE-jump. No <code>GET /jumps/{id}/attachments/{filename}</code>. The user can't preview a jump video in-app today.", impact:3, risk:1, effort:3, phase:"P4"},
+  {id:"CODE-4", category:"CODE", title:"sanitize_folder_name has no byte-length cap", detail:"<code>sanitize_filename</code> caps at 255; <code>sanitize_folder_name</code> doesn't. JumpTitle max=120 chars ≈ 480 bytes pessimal UTF-8. Long emoji-dense titles produce obscure <code>OSError</code> from <code>mkdir</code> instead of clean 422.", impact:2, risk:1, effort:2, phase:"P3"},
+  {id:"CODE-8", category:"CODE", title:"RFC 6901 pointer escaping not implemented", detail:"<code>backend/api/errors.py</code> builds JSON Pointers like <code>#/jump_number</code>. Field names with <code>/</code> or <code>~</code> would emit malformed pointers. Latent today (no such field names) but blocks future fields.", impact:1, risk:2, effort:2, phase:"P3"},
+  {id:"TEST-7", category:"TEST", title:"No SIGKILL-leaves-recoverable-state test", detail:"<code>main.py</code> releases the lock in a <code>finally</code>; SIGKILL skips it. <code>flock</code> auto-releases on process death so a stale <code>.logbook.lock</code> is harmless — but no test pins this.", impact:2, risk:2, effort:3, phase:"P5"},
+  {id:"INFRA-2", category:"INFRA", title:"36 vite.config.js.timestamp-*.mjs files in repo", detail:"Vite's HMR-driven config recompile leaves transient timestamp files. Not in <code>frontend/.gitignore</code>; not <code>.git rm</code>'d. Deep review counted 12 on 2026-04-28; today there are 36 — situation worsening.", impact:1, risk:1, effort:1, phase:"P0"},
+  {id:"CODE-3", category:"CODE", title:"trash.py uses non-canonical D17 timestamp", detail:"<code>storage/trash.py:43,80</code> use <code>strftime(\"%Y%m%dT%H%M%SZ\")</code>. D17 specifies ISO 8601 UTC with millisecond precision and <code>Z</code> — every other code path uses <code>_now_utc_iso()</code>. Trash is the lone exception.", impact:1, risk:1, effort:1, phase:"P3"},
+  {id:"CODE-9", category:"CODE", title:"4 ruff lint errors today", detail:"<code>ruff check backend</code> reports I001 (import order) on jumps.py + reindex_service.py + stats_service.py and F401 (unused import) on launch_desktop.py + SIM105. HANDOFF.md claimed \"0 ruff warnings\". Drift between docs and reality.", impact:1, risk:1, effort:1, phase:"P0"},
+  {id:"DEP-2", category:"DEP", title:"No mypy / pyright type checking", detail:"<code>pyproject.toml</code> configures ruff but no static type checker. Service-layer-heavy code with strict invariants benefits a lot from <code>mypy --strict</code> (or pyright). Several hours; high leverage.", impact:3, risk:2, effort:4, phase:"P5"},
+  {id:"INFRA-7", category:"INFRA", title:"App icon, version metadata, code signing", detail:"Platform-specific deployment details. HANDOFF.md notes them as a deployment prerequisite. Worth a D-entry when they land.", impact:3, risk:2, effort:4, phase:"P4"},
+  {id:"CODE-1", category:"CODE", title:"open_index opens fresh connection per call", detail:"<code>jump_service</code> functions call <code>open_index</code> 1–3 times per request. Cost is microseconds today. A per-request connection dependency would also save the PRAGMA-setting overhead. Defer until profiling shows it.", impact:2, risk:1, effort:3, phase:"P5"},
+  {id:"CODE-6", category:"CODE", title:"summary.md never written despite D5", detail:"<code>jump_service.create_jump</code> step 5 docstring says \"deferred (D5)\". <code>manifest.py</code> excludes summary.md from manifests. D5 says writes are best-effort and absence is acceptable — but no D-entry pins \"deferred to v0.2\". Pick one.", impact:1, risk:1, effort:2, phase:"P4"},
+  {id:"DOC-7", category:"DOC", title:"Auto-memory snapshot is stale", detail:"<code>project_skydive_logbook.md</code> says \"Phase 3.5; next is Phase 3.6 reindex_from_xml\". Current state is way past that — D47, Rig Manager R.0+, jumper credentials shipped.", impact:1, risk:0, effort:1, phase:"P5"},
+  {id:"INFRA-8", category:"INFRA", title:"Three .venv folders coexist", detail:"<code>.venv</code>, <code>.venv-sandbox</code>, <code>.venv-test</code>. HANDOFF.md gotcha #2 says <code>.venv/</code> may have dangling symlinks. Clutter; not load-bearing. Pick one.", impact:1, risk:0, effort:1, phase:"P5"},
+];
+
+// Compute priority + render
+ITEMS.forEach(it => { it.priority = (it.impact + it.risk) * (6 - it.effort); });
+ITEMS.sort((a,b) => b.priority - a.priority);
+
+const CAT_LABEL = { DEP:"Dependency", INFRA:"Infrastructure", ARCH:"Architecture", CODE:"Code", TEST:"Test", DOC:"Documentation" };
+const PHASE_LABEL = { P0:"P0", P1:"P1", P2:"P2", P3:"P3", P4:"P4", P5:"P5" };
+
+const tbody = document.getElementById("debt-body");
+
+function priClass(v) {
+  if (v >= 30) return "p-blocker";
+  if (v >= 18) return "p-major";
+  if (v >= 10) return "p-minor";
+  return "p-low";
+}
+
+function render(rows) {
+  tbody.innerHTML = "";
+  rows.forEach(it => {
+    const tr = document.createElement("tr");
+    tr.dataset.cat = it.category;
+    tr.innerHTML = `
+      <td class="id">${it.id}</td>
+      <td class="cat cat-${it.category}">${CAT_LABEL[it.category]}</td>
+      <td class="title">${it.title}<small>${it.detail}</small></td>
+      <td class="num">${it.impact}</td>
+      <td class="num">${it.risk}</td>
+      <td class="num">${it.effort}</td>
+      <td class="pri"><span class="pri-cell ${priClass(it.priority)}">${it.priority}</span></td>
+      <td class="phase">${PHASE_LABEL[it.phase]}</td>
+    `;
+    tbody.appendChild(tr);
+  });
+}
+render(ITEMS);
+
+// Stats
+function renderStats() {
+  const counts = ITEMS.reduce((acc, it) => { acc[it.category] = (acc[it.category]||0)+1; return acc; }, {});
+  const blocker = ITEMS.filter(i => i.priority >= 30).length;
+  const major = ITEMS.filter(i => i.priority >= 18 && i.priority < 30).length;
+  const minor = ITEMS.filter(i => i.priority >= 10 && i.priority < 18).length;
+  const low = ITEMS.filter(i => i.priority < 10).length;
+  const stats = [
+    { v: ITEMS.length, l: "Total items" },
+    { v: blocker, l: "Blocker (≥30)" },
+    { v: major, l: "Major (18–29)" },
+    { v: minor, l: "Minor (10–17)" },
+    { v: low, l: "Low (<10)" },
+    { v: ITEMS.filter(i => i.phase === "P0").length, l: "Phase 0 (pre-ship)" },
+  ];
+  document.getElementById("stats").innerHTML = stats.map(s => `
+    <div class="stat"><div class="v">${s.v}</div><div class="l">${s.l}</div></div>
+  `).join("");
+}
+renderStats();
+
+// Sort
+let sortKey = "priority";
+let sortDir = -1;
+document.querySelectorAll("th[data-sort]").forEach(th => {
+  th.addEventListener("click", () => {
+    const k = th.dataset.sort;
+    if (sortKey === k) sortDir = -sortDir;
+    else { sortKey = k; sortDir = (k === "priority" || k === "impact" || k === "risk") ? -1 : 1; }
+    const sorted = [...ITEMS].sort((a,b) => {
+      const av = a[k], bv = b[k];
+      if (typeof av === "number") return (av - bv) * sortDir;
+      return String(av).localeCompare(String(bv)) * sortDir;
+    });
+    applyFilters(sorted);
+    document.querySelectorAll("th .arr").forEach(s => s.textContent = "");
+    const arrEl = th.querySelector(".arr");
+    if (arrEl) arrEl.textContent = sortDir > 0 ? "▴" : "▾";
+  });
+});
+
+// Filters
+let activeCat = "all";
+let searchTerm = "";
+const catFilter = document.getElementById("cat-filter");
+catFilter.addEventListener("click", e => {
+  if (!e.target.matches(".pill")) return;
+  catFilter.querySelectorAll(".pill").forEach(p => p.setAttribute("aria-pressed", "false"));
+  e.target.setAttribute("aria-pressed", "true");
+  activeCat = e.target.dataset.cat;
+  applyFilters();
+});
+document.getElementById("search").addEventListener("input", e => {
+  searchTerm = e.target.value.toLowerCase().trim();
+  applyFilters();
+});
+
+function applyFilters(rows) {
+  rows = rows || (sortKey === "priority" && sortDir === -1 ? ITEMS : [...ITEMS].sort((a,b) => {
+    const av = a[sortKey], bv = b[sortKey];
+    if (typeof av === "number") return (av - bv) * sortDir;
+    return String(av).localeCompare(String(bv)) * sortDir;
+  }));
+  const filtered = rows.filter(it => {
+    if (activeCat !== "all" && it.category !== activeCat) return false;
+    if (searchTerm) {
+      const hay = (it.id + " " + it.title + " " + it.detail).toLowerCase();
+      if (!hay.includes(searchTerm)) return false;
+    }
+    return true;
+  });
+  render(filtered);
+}
+</script>
+
+</body>
+</html>

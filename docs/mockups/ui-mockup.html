@@ -1,0 +1,1298 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<title>Skydive Logbook — UI mockup</title>
+<style>
+  /* ------------------------------------------------------------------
+     Tokens. Kept small on purpose — if we extract a design system later,
+     these become the starting palette.
+     ------------------------------------------------------------------ */
+  :root {
+    --bg-page: #eceef1;
+    --bg-window: #ffffff;
+    --bg-sidebar: #f6f7f9;
+    --bg-subtle: #f0f2f5;
+    --bg-hover: #eef1f5;
+    --bg-active: #e4ecf7;
+    --border: #dde1e7;
+    --border-strong: #c5cbd3;
+    --text: #1d2431;
+    --text-muted: #5b6472;
+    --text-faint: #8a94a3;
+    --accent: #2563eb;      /* primary — links, CTAs */
+    --accent-ink: #ffffff;
+    --ok: #128a51;
+    --warn: #b45309;
+    --err: #b42318;
+    --radius: 6px;
+    --radius-sm: 4px;
+    --shadow: 0 1px 2px rgba(16,24,40,.06), 0 1px 3px rgba(16,24,40,.08);
+    --mono: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    --sans: -apple-system, BlinkMacSystemFont, "Segoe UI", Inter, Roboto, sans-serif;
+  }
+
+  * { box-sizing: border-box; }
+  html, body {
+    margin: 0; padding: 0;
+    font-family: var(--sans);
+    font-size: 13px;
+    color: var(--text);
+    background: var(--bg-page);
+    line-height: 1.4;
+  }
+
+  /* Desktop window frame — mimics the packaged pywebview container */
+  .window {
+    width: 1200px;
+    height: 800px;
+    margin: 24px auto;
+    background: var(--bg-window);
+    border: 1px solid var(--border-strong);
+    border-radius: 10px;
+    box-shadow: 0 20px 60px rgba(16,24,40,.18);
+    display: grid;
+    grid-template-rows: 36px 1fr;
+    overflow: hidden;
+  }
+  .titlebar {
+    display: flex; align-items: center;
+    padding: 0 12px;
+    background: linear-gradient(#fafbfc, #eff1f4);
+    border-bottom: 1px solid var(--border);
+    gap: 8px;
+    font-size: 12px; color: var(--text-muted);
+    -webkit-user-select: none; user-select: none;
+  }
+  .traffic { display:flex; gap:6px; }
+  .traffic span { width:11px; height:11px; border-radius:50%; display:block; border:1px solid rgba(0,0,0,.08); }
+  .traffic .c { background:#ff5f57; }
+  .traffic .m { background:#febc2e; }
+  .traffic .g { background:#28c840; }
+  .titlebar .title { flex:1; text-align:center; font-weight:500; color: var(--text); }
+  .titlebar .folder {
+    font-family: var(--mono); font-size: 11px;
+    color: var(--text-muted);
+    padding: 2px 8px;
+    background: var(--bg-subtle);
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    max-width: 420px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  }
+
+  /* Body = sidebar + main */
+  .body { display: grid; grid-template-columns: 200px 1fr; height: 100%; min-height: 0; }
+
+  /* ---------- Sidebar ---------- */
+  .sidebar {
+    background: var(--bg-sidebar);
+    border-right: 1px solid var(--border);
+    padding: 12px 8px;
+    display: flex; flex-direction: column;
+  }
+  .side-section {
+    font-size: 10px;
+    text-transform: uppercase;
+    letter-spacing: .06em;
+    color: var(--text-faint);
+    padding: 10px 10px 6px;
+  }
+  .nav-item {
+    display: flex; align-items: center; gap: 10px;
+    padding: 7px 10px;
+    border-radius: var(--radius-sm);
+    cursor: pointer;
+    color: var(--text);
+  }
+  .nav-item:hover { background: var(--bg-hover); }
+  .nav-item.active { background: var(--bg-active); color: var(--accent); font-weight: 500; }
+  .nav-item .icon { width: 16px; height: 16px; display: inline-block; flex-shrink: 0; }
+  .nav-item .count {
+    margin-left: auto;
+    font-size: 11px;
+    color: var(--text-muted);
+    background: var(--bg-window);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 0 6px;
+    min-width: 20px; text-align: center;
+  }
+  .sidebar-footer {
+    margin-top: auto;
+    padding: 10px;
+    border-top: 1px solid var(--border);
+    font-size: 11px;
+    color: var(--text-muted);
+  }
+  .sidebar-footer .row { display: flex; justify-content: space-between; padding: 2px 0; }
+  .sidebar-footer .verified { color: var(--ok); }
+
+  /* ---------- Main ---------- */
+  .main { display: flex; flex-direction: column; min-width: 0; min-height: 0; }
+  .toolbar {
+    display: flex; align-items: center; gap: 8px;
+    padding: 10px 16px;
+    border-bottom: 1px solid var(--border);
+    background: var(--bg-window);
+  }
+  .toolbar h1 { font-size: 15px; margin: 0; font-weight: 600; }
+  .toolbar .spacer { flex: 1; }
+
+  /* Buttons */
+  .btn {
+    font: inherit;
+    padding: 5px 12px;
+    border-radius: var(--radius-sm);
+    border: 1px solid var(--border-strong);
+    background: var(--bg-window);
+    color: var(--text);
+    cursor: pointer;
+    display: inline-flex; align-items: center; gap: 6px;
+  }
+  .btn:hover { background: var(--bg-subtle); }
+  .btn.primary {
+    background: var(--accent); color: var(--accent-ink); border-color: var(--accent);
+  }
+  .btn.primary:hover { background: #1d4ed8; }
+  .btn.ghost { border-color: transparent; background: transparent; }
+  .btn.ghost:hover { background: var(--bg-hover); }
+  .btn.danger { color: var(--err); border-color: var(--border-strong); }
+  .btn.danger:hover { background: #fdf2f2; }
+  .btn.sm { padding: 3px 8px; font-size: 12px; }
+
+  /* Filter bar */
+  .filters {
+    display: flex; gap: 8px; align-items: center;
+    padding: 10px 16px;
+    border-bottom: 1px solid var(--border);
+    background: var(--bg-subtle);
+    flex-wrap: wrap;
+  }
+  .filters input, .filters select {
+    font: inherit; font-size: 12px;
+    padding: 4px 8px;
+    border: 1px solid var(--border-strong);
+    border-radius: var(--radius-sm);
+    background: var(--bg-window);
+    color: var(--text);
+  }
+  .filters input[type="search"] { min-width: 200px; }
+  .filter-chip {
+    font-size: 11px; padding: 2px 8px; border-radius: 12px;
+    background: var(--bg-window); border: 1px solid var(--border-strong);
+    color: var(--text-muted);
+  }
+
+  /* Content area */
+  .content { flex: 1; overflow: auto; }
+  .pad { padding: 16px; }
+
+  /* ---------- Jumps table ---------- */
+  table.data {
+    width: 100%; border-collapse: collapse;
+    font-size: 12.5px;
+  }
+  table.data thead th {
+    text-align: left;
+    font-weight: 500; font-size: 11px;
+    text-transform: uppercase; letter-spacing: .04em;
+    color: var(--text-muted);
+    padding: 8px 12px;
+    border-bottom: 1px solid var(--border);
+    background: var(--bg-window);
+    position: sticky; top: 0;
+  }
+  table.data tbody td {
+    padding: 10px 12px;
+    border-bottom: 1px solid var(--border);
+    vertical-align: middle;
+  }
+  table.data tbody tr { cursor: pointer; }
+  table.data tbody tr:hover { background: var(--bg-hover); }
+  table.data tbody tr.selected { background: var(--bg-active); }
+  td.num { font-variant-numeric: tabular-nums; }
+  td.mono { font-family: var(--mono); font-size: 12px; color: var(--text-muted); }
+  .tag {
+    display: inline-block; font-size: 11px;
+    padding: 1px 7px; border-radius: 10px;
+    background: var(--bg-subtle); color: var(--text-muted);
+    border: 1px solid var(--border);
+  }
+  .tag.ok { color: var(--ok); border-color: #bfe3d0; background:#ecf7f1; }
+  .tag.warn { color: var(--warn); border-color: #f3dbb0; background:#fdf5e6; }
+  .tag.err { color: var(--err); border-color: #f2cbc7; background:#fbecea; }
+
+  /* ---------- Detail / form ---------- */
+  .detail-header {
+    display: flex; align-items: center; gap: 10px;
+    padding: 12px 16px; border-bottom: 1px solid var(--border);
+  }
+  .detail-header h2 { font-size: 16px; margin: 0; }
+  .detail-header .jumpno {
+    font-family: var(--mono); font-size: 12px; color: var(--text-muted);
+    padding: 2px 8px; background: var(--bg-subtle); border-radius: 4px;
+  }
+  .detail-grid {
+    display: grid; grid-template-columns: 1fr 1fr; gap: 24px; padding: 16px;
+  }
+  .field { margin-bottom: 12px; }
+  .field label {
+    display: block; font-size: 11px;
+    text-transform: uppercase; letter-spacing: .04em;
+    color: var(--text-muted); margin-bottom: 3px;
+  }
+  .field .value { font-size: 13px; }
+  .field .value.mono { font-family: var(--mono); font-size: 12px; color: var(--text-muted); }
+  .field .value.empty { color: var(--text-faint); font-style: italic; }
+  .field input[type="text"], .field input[type="number"], .field input[type="date"],
+  .field input[type="time"], .field select, .field textarea {
+    width: 100%;
+    padding: 5px 8px;
+    border: 1px solid var(--border-strong);
+    border-radius: var(--radius-sm);
+    background: var(--bg-window);
+    font: inherit;
+    color: var(--text);
+  }
+  .field textarea { min-height: 70px; resize: vertical; }
+  .field .help { font-size: 11px; color: var(--text-faint); margin-top: 3px; }
+
+  /* Section divider in a form */
+  .section-hdr {
+    font-size: 11px; text-transform: uppercase; letter-spacing: .06em;
+    color: var(--text-faint);
+    padding: 4px 16px 6px;
+    background: var(--bg-subtle);
+    border-top: 1px solid var(--border);
+    border-bottom: 1px solid var(--border);
+  }
+
+  /* Form action bar */
+  .actionbar {
+    display: flex; gap: 8px;
+    padding: 10px 16px;
+    border-top: 1px solid var(--border);
+    background: var(--bg-subtle);
+  }
+  .actionbar .spacer { flex: 1; }
+
+  /* Attachments list */
+  .attach-list { display: flex; flex-direction: column; gap: 6px; padding: 0 16px 16px; }
+  .attach {
+    display: grid; grid-template-columns: 24px 1fr auto auto; gap: 10px;
+    align-items: center;
+    padding: 8px 12px; border: 1px solid var(--border);
+    border-radius: var(--radius-sm); background: var(--bg-window);
+  }
+  .attach .fname { font-family: var(--mono); font-size: 12px; }
+  .attach .meta { font-size: 11px; color: var(--text-muted); }
+  .attach .hash {
+    font-family: var(--mono); font-size: 10px; color: var(--text-faint);
+    max-width: 120px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  }
+
+  /* ---------- Equipment tabs ---------- */
+  .eq-tabs {
+    display: flex; gap: 2px;
+    padding: 0 16px;
+    border-bottom: 1px solid var(--border);
+    background: var(--bg-subtle);
+  }
+  .eq-tab {
+    padding: 10px 16px;
+    cursor: pointer;
+    font-size: 12.5px;
+    color: var(--text-muted);
+    border-bottom: 2px solid transparent;
+    margin-bottom: -1px;
+  }
+  .eq-tab:hover { color: var(--text); }
+  .eq-tab.active { color: var(--accent); border-bottom-color: var(--accent); font-weight: 500; }
+  .eq-cards { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; padding: 16px; }
+  .eq-card {
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    padding: 12px;
+    background: var(--bg-window);
+    cursor: pointer;
+  }
+  .eq-card:hover { border-color: var(--border-strong); background: var(--bg-subtle); }
+  .eq-card .title { font-weight: 600; font-size: 13px; }
+  .eq-card .sub { color: var(--text-muted); font-size: 12px; margin-top: 2px; }
+  .eq-card .meta { display: flex; gap: 6px; margin-top: 8px; flex-wrap: wrap; }
+
+  /* ---------- Rigs ---------- */
+  .rig-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; padding: 16px; }
+  .rig-card {
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    background: var(--bg-window);
+    cursor: pointer;
+    overflow: hidden;
+    display: flex; flex-direction: column;
+  }
+  .rig-card:hover { border-color: var(--border-strong); }
+  .rig-card.retired { opacity: .65; }
+  .rig-card .rig-hdr {
+    padding: 10px 12px;
+    border-bottom: 1px solid var(--border);
+    display: flex; align-items: center; gap: 8px;
+    background: var(--bg-subtle);
+  }
+  .rig-card .rig-hdr .name { font-weight: 600; font-size: 13.5px; flex: 1; }
+  .rig-card .rig-body { padding: 8px 0; }
+  .rig-row {
+    display: grid; grid-template-columns: 80px 1fr;
+    padding: 5px 12px;
+    font-size: 12.5px;
+    align-items: center;
+  }
+  .rig-row .role {
+    font-size: 10.5px; text-transform: uppercase; letter-spacing: .04em;
+    color: var(--text-faint);
+  }
+  .rig-row .item { color: var(--text); }
+  .rig-row .item.empty { color: var(--text-faint); font-style: italic; }
+  .rig-row .alert { color: var(--warn); margin-left: 6px; font-size: 11px; }
+  .rig-card .rig-foot {
+    padding: 8px 12px;
+    border-top: 1px solid var(--border);
+    display: flex; gap: 10px; align-items: center;
+    font-size: 12px; color: var(--text-muted);
+    background: var(--bg-window);
+  }
+  .rig-card .rig-foot .spacer { flex: 1; }
+
+  /* ---------- Stats ---------- */
+  .kpi-grid {
+    display: grid; grid-template-columns: repeat(4, 1fr);
+    gap: 12px; padding: 16px;
+  }
+  .kpi {
+    background: var(--bg-window);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    padding: 14px;
+  }
+  .kpi .label { font-size: 11px; text-transform: uppercase; letter-spacing: .05em; color: var(--text-muted); }
+  .kpi .value { font-size: 22px; font-weight: 600; margin-top: 4px; font-variant-numeric: tabular-nums; }
+  .kpi .sub { font-size: 11px; color: var(--text-faint); margin-top: 2px; }
+  .panel {
+    background: var(--bg-window);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    margin: 0 16px 16px;
+    overflow: hidden;
+  }
+  .panel-hdr {
+    padding: 10px 14px;
+    border-bottom: 1px solid var(--border);
+    font-size: 12px; font-weight: 600; color: var(--text);
+    display: flex; align-items: center;
+  }
+  .panel-hdr .spacer { flex: 1; }
+  .panel-body { padding: 14px; }
+
+  /* Simple SVG-free bar chart in CSS */
+  .bars { display: flex; flex-direction: column; gap: 6px; }
+  .bar-row { display: grid; grid-template-columns: 130px 1fr 60px; gap: 8px; align-items: center; font-size: 12px; }
+  .bar-track { background: var(--bg-subtle); border-radius: 3px; height: 14px; position: relative; overflow: hidden; }
+  .bar-fill { height: 100%; background: var(--accent); border-radius: 3px; }
+  .bar-num { text-align: right; font-variant-numeric: tabular-nums; color: var(--text-muted); }
+
+  /* Year sparkline (bars) */
+  .yearline { display: grid; grid-template-columns: repeat(12, 1fr); gap: 4px; align-items: end; height: 120px; }
+  .yearbar { background: var(--accent); opacity: .8; border-radius: 2px 2px 0 0; min-height: 2px; }
+  .yearbar:hover { opacity: 1; }
+  .year-x { display: grid; grid-template-columns: repeat(12, 1fr); gap: 4px; font-size: 10px; color: var(--text-faint); margin-top: 4px; text-align: center; }
+
+  /* Banner / toast (RFC 9457 problem+json surfacing) */
+  .banner {
+    margin: 12px 16px 0; padding: 10px 12px;
+    border-radius: var(--radius);
+    border: 1px solid #f2cbc7; background: #fbecea; color: var(--err);
+    font-size: 12.5px;
+    display: flex; gap: 8px; align-items: flex-start;
+  }
+  .banner .type { font-family: var(--mono); font-size: 11px; color: var(--text-muted); }
+  .banner.info { border-color: #c9dbf5; background:#eef4fd; color: #1e3a8a; }
+  .banner.warn { border-color:#f3dbb0; background:#fdf5e6; color: var(--warn); }
+
+  /* Hidden view helper */
+  .view { display: none; height: 100%; min-height: 0; flex-direction: column; }
+  .view.active { display: flex; }
+
+  /* Empty state */
+  .empty {
+    padding: 40px 16px;
+    text-align: center; color: var(--text-muted);
+    border: 1px dashed var(--border-strong);
+    border-radius: var(--radius);
+    margin: 16px;
+  }
+
+  /* Scrollbar polish */
+  ::-webkit-scrollbar { width: 10px; height: 10px; }
+  ::-webkit-scrollbar-thumb { background: #d7dbe1; border-radius: 6px; }
+  ::-webkit-scrollbar-thumb:hover { background: #c1c7d0; }
+
+  /* Mock legend below the window */
+  .legend {
+    width: 1200px; margin: 0 auto 40px;
+    font-size: 12px; color: var(--text-muted);
+    padding: 8px 4px;
+  }
+  .legend kbd {
+    font-family: var(--mono); font-size: 11px;
+    padding: 1px 5px; background: var(--bg-window);
+    border: 1px solid var(--border-strong); border-radius: 3px;
+  }
+</style>
+</head>
+<body>
+
+<!-- ================================================================
+     WINDOW FRAME
+     ================================================================ -->
+<div class="window">
+
+  <!-- Titlebar -->
+  <div class="titlebar">
+    <div class="traffic"><span class="c"></span><span class="m"></span><span class="g"></span></div>
+    <div class="title">Skydive Logbook</div>
+    <div class="folder" title="Logbook folder — chosen at first run (D4/D18)">~/Documents/Skydive/logbook</div>
+  </div>
+
+  <!-- Body: sidebar + main -->
+  <div class="body">
+
+    <!-- ============ Sidebar ============ -->
+    <aside class="sidebar">
+      <div class="side-section">Logbook</div>
+      <div class="nav-item active" data-nav="jumps">
+        <svg class="icon" viewBox="0 0 16 16" fill="none"><path d="M3 2h10v12H3z" stroke="currentColor"/><path d="M5 5h6M5 8h6M5 11h4" stroke="currentColor"/></svg>
+        Jumps <span class="count">247</span>
+      </div>
+      <div class="nav-item" data-nav="rigs">
+        <svg class="icon" viewBox="0 0 16 16" fill="none"><path d="M3 4h10v3a3 3 0 0 1-3 3H6a3 3 0 0 1-3-3z" stroke="currentColor"/><path d="M6 10v3M10 10v3" stroke="currentColor"/></svg>
+        Rigs <span class="count">3</span>
+      </div>
+      <div class="nav-item" data-nav="equipment">
+        <svg class="icon" viewBox="0 0 16 16" fill="none"><circle cx="8" cy="8" r="5" stroke="currentColor"/><path d="M8 3v10M3 8h10" stroke="currentColor"/></svg>
+        Equipment <span class="count">7</span>
+      </div>
+      <div class="nav-item" data-nav="stats">
+        <svg class="icon" viewBox="0 0 16 16" fill="none"><path d="M2 14h12M4 11V6M7 11V3M10 11V8M13 11V5" stroke="currentColor" stroke-linecap="round"/></svg>
+        Stats
+      </div>
+
+      <div class="side-section">Maintenance</div>
+      <div class="nav-item" data-nav="verify">
+        <svg class="icon" viewBox="0 0 16 16" fill="none"><path d="M3 8l3 3 7-7" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>
+        Verify
+      </div>
+      <div class="nav-item" data-nav="settings">
+        <svg class="icon" viewBox="0 0 16 16" fill="none"><circle cx="8" cy="8" r="2.5" stroke="currentColor"/><path d="M8 1v2M8 13v2M1 8h2M13 8h2M3 3l1.5 1.5M11.5 11.5L13 13M3 13l1.5-1.5M11.5 4.5L13 3" stroke="currentColor"/></svg>
+        Settings
+      </div>
+
+      <div class="sidebar-footer">
+        <div class="row"><span>Schema</span><span>v1</span></div>
+        <div class="row"><span>Last verified</span><span class="verified">2h ago ✓</span></div>
+        <div class="row"><span>Index</span><span>synced</span></div>
+      </div>
+    </aside>
+
+    <!-- ============ Main content ============ -->
+    <main class="main">
+
+      <!-- ========================================================
+           VIEW 1 — JUMPS LIST
+           ======================================================== -->
+      <section class="view active" id="view-jumps">
+        <div class="toolbar">
+          <h1>Jumps</h1>
+          <div class="spacer"></div>
+          <button class="btn ghost sm" title="Rebuild the SQLite index from XML on disk (D3)">Reindex</button>
+          <button class="btn primary" data-nav="jump-new">+ New jump</button>
+        </div>
+        <div class="filters">
+          <input type="search" placeholder="Search notes, DZ, aircraft…" />
+          <select>
+            <option>All dropzones</option>
+            <option>Skydive Algarve</option>
+            <option>Skydive Empuriabrava</option>
+            <option>Skydive Dubai — Desert</option>
+          </select>
+          <select>
+            <option>All aircraft</option>
+            <option>Cessna 208 Caravan</option>
+            <option>Twin Otter DHC-6</option>
+            <option>Pilatus PC-6</option>
+          </select>
+          <select>
+            <option>All disciplines</option>
+            <option>Belly (FS)</option>
+            <option>Freefly</option>
+            <option>Wingsuit</option>
+            <option>Canopy (CP)</option>
+          </select>
+          <input type="date" value="2026-01-01" />
+          <span>–</span>
+          <input type="date" value="2026-04-23" />
+          <span class="filter-chip">247 matching</span>
+        </div>
+
+        <div class="content">
+          <table class="data">
+            <thead>
+              <tr>
+                <th style="width:60px;">#</th>
+                <th style="width:110px;">Date</th>
+                <th>Title</th>
+                <th>Dropzone</th>
+                <th>Aircraft</th>
+                <th>Discipline</th>
+                <th class="num" style="width:90px;">Exit</th>
+                <th class="num" style="width:90px;">FF time</th>
+                <th style="width:90px;">Canopy</th>
+                <th style="width:60px;">Att.</th>
+              </tr>
+            </thead>
+            <tbody id="jumps-rows">
+              <!-- injected by JS -->
+            </tbody>
+          </table>
+        </div>
+      </section>
+
+      <!-- ========================================================
+           VIEW 2 — JUMP DETAIL (readonly)
+           ======================================================== -->
+      <section class="view" id="view-jump-detail">
+        <div class="toolbar">
+          <button class="btn ghost sm" data-nav="jumps">← Jumps</button>
+          <h1 style="margin-left:8px;">Jump detail</h1>
+          <div class="spacer"></div>
+          <button class="btn ghost sm" title="Open the jump's folder in Finder/Explorer">Reveal folder</button>
+          <button class="btn" data-nav="jump-edit">Edit</button>
+          <button class="btn danger" data-nav="jumps">Delete</button>
+        </div>
+        <div class="detail-header">
+          <span class="jumpno">#247</span>
+          <h2>Opening at night over the coast</h2>
+          <span class="tag ok">XSD valid</span>
+          <span class="tag">3 attachments</span>
+        </div>
+        <div class="content">
+          <div class="detail-grid">
+            <div>
+              <div class="field"><label>Date</label><div class="value">2026-04-20 · 18:42:00 · Europe/Lisbon</div></div>
+              <div class="field"><label>Dropzone</label><div class="value">Skydive Algarve</div></div>
+              <div class="field"><label>Aircraft</label><div class="value">Cessna 208 Caravan</div></div>
+              <div class="field"><label>Discipline</label><div class="value">Freefly</div></div>
+              <div class="field"><label>Exit altitude</label><div class="value">4 200 m</div></div>
+              <div class="field"><label>Deployment altitude</label><div class="value">900 m</div></div>
+              <div class="field"><label>Freefall time</label><div class="value">58 s</div></div>
+              <div class="field"><label>Notes</label><div class="value">Clean head-down exit. Barrel roll at 1800, tracked ~4s before break-off. Left a bit of slack in the dive loop — check pack job.</div></div>
+            </div>
+            <div>
+              <div class="field"><label>ID</label><div class="value mono">f1e2d3c4-5a6b-4c7d-8e9f-0a1b2c3d4e5f</div></div>
+              <div class="field">
+                <label>Rig <span class="tag" style="margin-left:4px;" title="Per D36, the four equipment fields below are read from rig-snapshot.xml in this jump folder, not from the live rig record. Component swaps after 2026-04-20 do not change this jump.">snapshot</span></label>
+                <div class="value">Sport rig</div>
+                <div class="help">Frozen at log time — 2026-04-20. Subsequent swaps on this rig don't rewrite this jump.</div>
+              </div>
+              <div class="field"><label>Container</label><div class="value">UPT Vector V348 · SN 12345</div></div>
+              <div class="field"><label>Main canopy</label><div class="value">PD Sabre2 150 · SN SBR-9921</div></div>
+              <div class="field"><label>Reserve</label><div class="value">PD Optimum 143 · last repack 2026-02-12</div></div>
+              <div class="field"><label>AAD</label><div class="value">Vigil 2+ · service due 2028-06-01</div></div>
+              <div class="field"><label>Created</label><div class="value mono">2026-04-20T19:18:44.112Z</div></div>
+              <div class="field"><label>Updated</label><div class="value mono">2026-04-21T08:02:11.440Z</div></div>
+              <div class="field"><label>Generator</label><div class="value mono">skydive-logbook/0.1.0</div></div>
+            </div>
+          </div>
+          <div class="section-hdr">Attachments</div>
+          <div class="attach-list">
+            <div class="attach">
+              <svg viewBox="0 0 16 16" fill="none"><path d="M3 2h7l3 3v9H3z" stroke="currentColor"/><path d="M10 2v3h3" stroke="currentColor"/></svg>
+              <div><div class="fname">flysight-track.csv</div><div class="meta">text/csv · 412 KB</div></div>
+              <div class="hash">a3f1…c29e</div>
+              <button class="btn sm">Open</button>
+            </div>
+            <div class="attach">
+              <svg viewBox="0 0 16 16" fill="none"><rect x="2" y="3" width="12" height="10" stroke="currentColor"/><circle cx="6" cy="7" r="1.5" stroke="currentColor"/><path d="M2 12l4-4 4 4 4-3" stroke="currentColor"/></svg>
+              <div><div class="fname">exit-photo.jpg</div><div class="meta">image/jpeg · 2.1 MB</div></div>
+              <div class="hash">91bd…77aa</div>
+              <button class="btn sm">Open</button>
+            </div>
+            <div class="attach">
+              <svg viewBox="0 0 16 16" fill="none"><path d="M3 3h10v10H3z" stroke="currentColor"/><path d="M6 6l4 2-4 2z" fill="currentColor"/></svg>
+              <div><div class="fname">freefall-clip.mp4</div><div class="meta">video/mp4 · 18.4 MB</div></div>
+              <div class="hash">55c0…1d2b</div>
+              <button class="btn sm">Open</button>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- ========================================================
+           VIEW 3 — JUMP EDIT / NEW (form)
+           ======================================================== -->
+      <section class="view" id="view-jump-edit">
+        <div class="toolbar">
+          <button class="btn ghost sm" data-nav="jumps">← Jumps</button>
+          <h1 style="margin-left:8px;" id="edit-title">Edit jump #247</h1>
+          <div class="spacer"></div>
+        </div>
+
+        <!-- Example of an RFC 9457 problem+json error surfaced in-context (D16) -->
+        <div class="banner" style="display:none;" id="edit-error">
+          <div style="flex:1;">
+            <div><strong>Validation failed</strong> · deployment_altitude_m must be less than exit_altitude_m</div>
+            <div class="type">type: /problems/jump-validation · status: 422</div>
+          </div>
+          <button class="btn ghost sm">Dismiss</button>
+        </div>
+
+        <div class="content">
+          <div class="section-hdr">Basics</div>
+          <div class="detail-grid">
+            <div>
+              <div class="field"><label>Jump number *</label><input type="number" value="247" /></div>
+              <div class="field"><label>Title</label><input type="text" value="Opening at night over the coast" maxlength="120" /><div class="help">Mirrored into the folder name (D4). Max 120 chars.</div></div>
+              <div class="field"><label>Date *</label><input type="date" value="2026-04-20" /></div>
+              <div class="field" style="display:grid;grid-template-columns:1fr 1fr;gap:8px;">
+                <div><label>Time</label><input type="time" step="1" value="18:42:00" /></div>
+                <div><label>Timezone (IANA)</label><input type="text" value="Europe/Lisbon" /></div>
+              </div>
+              <div class="field"><label>Dropzone *</label><input type="text" value="Skydive Algarve" /></div>
+              <div class="field"><label>Aircraft</label><input type="text" value="Cessna 208 Caravan" /></div>
+              <div class="field"><label>Discipline</label>
+                <select><option>Belly (FS)</option><option selected>Freefly</option><option>Wingsuit</option><option>Canopy (CP)</option></select>
+              </div>
+            </div>
+            <div>
+              <div class="field"><label>Exit altitude (m) *</label><input type="number" value="4200" /></div>
+              <div class="field"><label>Deployment altitude (m) *</label><input type="number" value="900" /></div>
+              <div class="field"><label>Freefall time (s)</label><input type="number" value="58" /></div>
+              <div class="field"><label>Notes</label><textarea>Clean head-down exit. Barrel roll at 1800, tracked ~4s before break-off. Left a bit of slack in the dive loop — check pack job.</textarea></div>
+            </div>
+          </div>
+
+          <div class="section-hdr">Equipment</div>
+          <div style="padding:12px 16px 0;display:flex;align-items:center;gap:10px;">
+            <label style="font-size:11px;text-transform:uppercase;letter-spacing:.04em;color:var(--text-muted);">Rig</label>
+            <select style="padding:5px 8px;border:1px solid var(--border-strong);border-radius:var(--radius-sm);background:var(--bg-window);font:inherit;min-width:240px;">
+              <option>— pick individually below —</option>
+              <option selected>Sport rig (Sabre2 150 + Vector V348)</option>
+              <option>Big way rig (Spectre 170 + Vector V348)</option>
+              <option>Wingsuit rig (Sabre2 150 + Wings W-22)</option>
+            </select>
+            <span class="filter-chip">auto-fills the four selectors</span>
+          </div>
+          <div class="detail-grid">
+            <div>
+              <div class="field"><label>Container</label>
+                <select><option>— none —</option><option selected>UPT Vector V348 · SN 12345</option></select>
+              </div>
+              <div class="field"><label>Main canopy</label>
+                <select><option>— none —</option><option selected>PD Sabre2 150</option><option>PD Spectre 170</option></select>
+              </div>
+            </div>
+            <div>
+              <div class="field"><label>Reserve</label>
+                <select><option>— none —</option><option selected>PD Optimum 143</option></select>
+              </div>
+              <div class="field"><label>AAD</label>
+                <select><option>— none —</option><option selected>Vigil 2+</option></select>
+              </div>
+            </div>
+          </div>
+
+          <div class="section-hdr">Attachments</div>
+
+          <!-- Edit mode (D31 metadata-only PUT — attachments preserved, not editable) -->
+          <div class="attach-list" id="attach-list-edit">
+            <div class="attach">
+              <svg viewBox="0 0 16 16" fill="none"><path d="M3 2h7l3 3v9H3z" stroke="currentColor"/></svg>
+              <div><div class="fname">flysight-track.csv</div><div class="meta">412 KB · sha256 a3f1…c29e</div></div>
+              <div class="hash">existing</div>
+              <span class="tag" title="Per D31, v0.1 PUT is metadata-only. Attachments are preserved unchanged. Editing them ships in a later phase.">read-only</span>
+            </div>
+            <div class="attach">
+              <svg viewBox="0 0 16 16" fill="none"><rect x="2" y="3" width="12" height="10" stroke="currentColor"/></svg>
+              <div><div class="fname">exit-photo.jpg</div><div class="meta">2.1 MB · sha256 91bd…77aa</div></div>
+              <div class="hash">existing</div>
+              <span class="tag">read-only</span>
+            </div>
+          </div>
+          <div style="padding: 0 16px 16px; font-size:11px; color:var(--text-faint);" id="attach-help-edit">
+            Attachment editing is deferred to a later release (D31). To replace files on this jump, delete it and re-create.
+          </div>
+
+          <!-- Create mode (multipart POST — attachments mutable). Hidden in edit mode. -->
+          <div class="attach-list" id="attach-list-create" style="display:none;">
+            <div class="attach">
+              <svg viewBox="0 0 16 16" fill="none"><path d="M3 2h7l3 3v9H3z" stroke="currentColor"/></svg>
+              <div><div class="fname">flysight-track.csv</div><div class="meta">412 KB · sha256 a3f1…c29e</div></div>
+              <div class="hash">staged</div>
+              <button class="btn sm danger">Remove</button>
+            </div>
+          </div>
+          <div style="padding: 0 16px 16px; display:none;" id="attach-add-create">
+            <button class="btn sm">+ Add attachment…</button>
+          </div>
+        </div>
+
+        <div class="actionbar">
+          <button class="btn ghost" data-nav="jumps">Cancel</button>
+          <div class="spacer"></div>
+          <span class="tag" style="align-self:center;">Will validate against SCHEMA.v1.xsd before write</span>
+          <button class="btn primary" data-nav="jump-detail">Save jump</button>
+        </div>
+      </section>
+
+      <!-- ========================================================
+           VIEW 4 — EQUIPMENT
+           ======================================================== -->
+      <section class="view" id="view-equipment">
+        <div class="toolbar">
+          <h1>Equipment</h1>
+          <div class="spacer"></div>
+          <button class="btn primary" data-nav="equipment-edit">+ New equipment</button>
+        </div>
+        <div class="eq-tabs">
+          <div class="eq-tab active" data-eq-tab="all">All · 7</div>
+          <div class="eq-tab" data-eq-tab="container">Containers · 1</div>
+          <div class="eq-tab" data-eq-tab="canopy">Canopies · 3</div>
+          <div class="eq-tab" data-eq-tab="reserve">Reserves · 1</div>
+          <div class="eq-tab" data-eq-tab="aad">AADs · 2</div>
+        </div>
+        <!-- Warning banner — reserve repack approaching -->
+        <div class="banner warn">
+          <div style="flex:1;">
+            <strong>Heads up.</strong> PD Optimum 143 reserve is 165 days since last repack (2026-02-12).
+          </div>
+        </div>
+        <div class="content">
+          <div class="eq-cards" id="eq-cards">
+            <!-- injected by JS -->
+          </div>
+        </div>
+      </section>
+
+      <!-- ========================================================
+           VIEW 5 — EQUIPMENT EDIT
+           ======================================================== -->
+      <section class="view" id="view-equipment-edit">
+        <div class="toolbar">
+          <button class="btn ghost sm" data-nav="equipment">← Equipment</button>
+          <h1 style="margin-left:8px;">New equipment</h1>
+          <div class="spacer"></div>
+        </div>
+        <div class="content">
+          <div class="section-hdr">Identity</div>
+          <div class="detail-grid">
+            <div>
+              <div class="field"><label>Kind *</label>
+                <select id="eq-kind">
+                  <option value="container">Container</option>
+                  <option value="canopy" selected>Canopy (main)</option>
+                  <option value="reserve">Reserve</option>
+                  <option value="aad">AAD</option>
+                </select>
+              </div>
+              <div class="field"><label>Manufacturer</label><input type="text" value="Performance Designs" /></div>
+              <div class="field"><label>Model</label><input type="text" value="Sabre2" /></div>
+              <div class="field"><label>Size</label><input type="text" value="150" /></div>
+              <div class="field"><label>Serial</label><input type="text" value="SBR-9921" /></div>
+            </div>
+            <div>
+              <div class="field"><label>Date of manufacture</label><input type="date" value="2024-03-14" /></div>
+              <div class="field"><label>First used</label><input type="date" value="2024-05-02" /></div>
+              <div class="field eq-reserve-only" style="display:none;"><label>Last reserve repack</label><input type="date" value="2026-02-12" /></div>
+              <div class="field eq-aad-only" style="display:none;"><label>AAD service due</label><input type="date" value="2028-06-01" /></div>
+              <div class="field"><label>Notes</label><textarea placeholder="Purchase notes, inspection history, etc."></textarea></div>
+            </div>
+          </div>
+        </div>
+        <div class="actionbar">
+          <button class="btn ghost" data-nav="equipment">Cancel</button>
+          <div class="spacer"></div>
+          <button class="btn primary" data-nav="equipment">Save equipment</button>
+        </div>
+      </section>
+
+      <!-- ========================================================
+           VIEW 5b — RIGS LIST
+           ======================================================== -->
+      <section class="view" id="view-rigs">
+        <div class="toolbar">
+          <h1>Rigs</h1>
+          <div class="spacer"></div>
+          <button class="btn ghost sm" title="A rig is a named bundle of container + main + reserve + AAD. Pick one when logging a jump to pre-fill all four equipment refs. Per D33, the rig is a first-class entity with its own XML and lifecycle.">What's a rig?</button>
+          <button class="btn primary" data-nav="rig-edit">+ New rig</button>
+        </div>
+
+        <div class="content">
+          <div class="rig-grid" id="rig-cards">
+            <!-- injected by JS -->
+          </div>
+        </div>
+      </section>
+
+      <!-- ========================================================
+           VIEW 5c — RIG EDIT
+           ======================================================== -->
+      <section class="view" id="view-rig-edit">
+        <div class="toolbar">
+          <button class="btn ghost sm" data-nav="rigs">← Rigs</button>
+          <h1 style="margin-left:8px;" id="rig-edit-title">Edit rig — Sport rig</h1>
+          <div class="spacer"></div>
+          <button class="btn danger" data-nav="rigs">Retire rig</button>
+        </div>
+        <div class="content">
+          <div class="section-hdr">Identity</div>
+          <div class="detail-grid">
+            <div>
+              <div class="field"><label>Name *</label><input type="text" value="Sport rig" maxlength="60" />
+                <div class="help">Free text. Used in the rig picker on the jump form.</div>
+              </div>
+              <div class="field"><label>Status</label>
+                <select><option selected>Active</option><option>Retired</option></select>
+              </div>
+              <div class="field"><label>Date assembled</label><input type="date" value="2024-05-02" /></div>
+            </div>
+            <div>
+              <div class="field"><label>ID</label><div class="value mono">8b2a4d51-7c33-4b89-9d10-5f6a1c0e2d44</div></div>
+              <div class="field"><label>Notes</label><textarea placeholder="Setup notes, weight class, line type, anything worth remembering.">Stock line set, default brake settings. Switched to slider keepers 2025-02.</textarea></div>
+            </div>
+          </div>
+
+          <div class="section-hdr">Components</div>
+          <div class="detail-grid">
+            <div>
+              <div class="field"><label>Container</label>
+                <select>
+                  <option>— none —</option>
+                  <option selected>UPT Vector V348 · SN 12345</option>
+                </select>
+              </div>
+              <div class="field"><label>Main canopy</label>
+                <select>
+                  <option>— none —</option>
+                  <option selected>PD Sabre2 150 · SN SBR-9921</option>
+                  <option>PD Spectre 170 · SN SPC-1180</option>
+                </select>
+              </div>
+            </div>
+            <div>
+              <div class="field"><label>Reserve</label>
+                <select>
+                  <option>— none —</option>
+                  <option selected>PD Optimum 143 · last repack 2026-02-12</option>
+                </select>
+                <div class="help" style="color:var(--warn);">Heads up: 165 days since last repack.</div>
+              </div>
+              <div class="field"><label>AAD</label>
+                <select>
+                  <option>— none —</option>
+                  <option selected>Vigil 2+ · service due 2028-06-01</option>
+                </select>
+              </div>
+            </div>
+          </div>
+
+          <div class="section-hdr">Activity</div>
+          <div style="padding:0 16px 16px;color:var(--text-muted);font-size:12.5px;">
+            <div style="display:flex;gap:24px;flex-wrap:wrap;">
+              <div><strong style="color:var(--text);">198</strong> jumps logged on this rig</div>
+              <div>Last used <strong style="color:var(--text);">2026-04-20</strong></div>
+              <div>First used <strong style="color:var(--text);">2024-05-02</strong></div>
+            </div>
+          </div>
+        </div>
+        <div class="actionbar">
+          <button class="btn ghost" data-nav="rigs">Cancel</button>
+          <div class="spacer"></div>
+          <span class="tag" style="align-self:center;">Will validate against SCHEMA.v1.xsd before write</span>
+          <button class="btn primary" data-nav="rigs">Save rig</button>
+        </div>
+      </section>
+
+      <!-- ========================================================
+           VIEW 6 — STATS / DASHBOARD
+           ======================================================== -->
+      <section class="view" id="view-stats">
+        <div class="toolbar">
+          <h1>Stats</h1>
+          <div class="spacer"></div>
+          <select><option>All time</option><option>This year</option><option>Last 12 months</option></select>
+          <button class="btn ghost sm">Export CSV</button>
+        </div>
+        <div class="content">
+          <div class="kpi-grid">
+            <div class="kpi">
+              <div class="label">Total jumps</div>
+              <div class="value">247</div>
+              <div class="sub">+32 this year</div>
+            </div>
+            <div class="kpi">
+              <div class="label">Freefall time</div>
+              <div class="value">4 h 12 m</div>
+              <div class="sub">avg 61 s / jump</div>
+            </div>
+            <div class="kpi">
+              <div class="label">Jumps last 90 d</div>
+              <div class="value">28</div>
+              <div class="sub">currency: green</div>
+            </div>
+            <div class="kpi">
+              <div class="label">Active dropzones</div>
+              <div class="value">6</div>
+              <div class="sub">this year</div>
+            </div>
+          </div>
+
+          <div class="panel">
+            <div class="panel-hdr">
+              Jumps per month — 2026
+              <div class="spacer"></div>
+              <span class="tag">Year-to-date · 32</span>
+            </div>
+            <div class="panel-body">
+              <div class="yearline" id="yearline"></div>
+              <div class="year-x">
+                <span>J</span><span>F</span><span>M</span><span>A</span><span>M</span><span>J</span>
+                <span>J</span><span>A</span><span>S</span><span>O</span><span>N</span><span>D</span>
+              </div>
+            </div>
+          </div>
+
+          <div class="panel">
+            <div class="panel-hdr">Jumps by canopy (all time)</div>
+            <div class="panel-body">
+              <div class="bars" id="canopy-bars"></div>
+            </div>
+          </div>
+
+          <div class="panel">
+            <div class="panel-hdr">Jumps by discipline</div>
+            <div class="panel-body">
+              <div class="bars" id="discipline-bars"></div>
+            </div>
+          </div>
+
+          <div class="panel">
+            <div class="panel-hdr">Jumps by rig</div>
+            <div class="panel-body">
+              <div class="bars" id="rig-bars"></div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- ========================================================
+           VIEW 7 — VERIFY
+           ======================================================== -->
+      <section class="view" id="view-verify">
+        <div class="toolbar">
+          <h1>Verify</h1>
+          <div class="spacer"></div>
+          <button class="btn primary">Run verification</button>
+        </div>
+        <div class="banner info">
+          <div style="flex:1;">
+            <strong>What this does.</strong> Walks every jump and equipment XML, validates it against
+            <code>SCHEMA.v1.xsd</code>, recomputes SHA-256 on attachments, and compares against <code>SHA256SUMS</code>.
+          </div>
+        </div>
+        <div class="content">
+          <div class="panel">
+            <div class="panel-hdr">Last run · 2h ago
+              <div class="spacer"></div>
+              <span class="tag ok">clean</span>
+            </div>
+            <div class="panel-body" style="font-family:var(--mono);font-size:12px;color:var(--text-muted);">
+              247 jumps validated · 7 equipment validated · 612 attachments hash-matched<br/>
+              index rebuilt: 0 drift · 1.82 s
+            </div>
+          </div>
+          <div class="empty">Run verification to walk the logbook folder and report any issues.</div>
+        </div>
+      </section>
+
+      <!-- ========================================================
+           VIEW 8 — SETTINGS
+           ======================================================== -->
+      <section class="view" id="view-settings">
+        <div class="toolbar"><h1>Settings</h1></div>
+        <div class="content">
+          <div class="panel">
+            <div class="panel-hdr">Logbook folder</div>
+            <div class="panel-body">
+              <div class="field">
+                <label>Path (D4 / D18)</label>
+                <div class="value mono">~/Documents/Skydive/logbook</div>
+                <div class="help">Selected at first run. Holds SCHEMA.v1.xsd, MANIFEST.json, jumps/, equipment/, index.sqlite.</div>
+              </div>
+              <button class="btn sm">Choose different folder…</button>
+            </div>
+          </div>
+          <div class="panel">
+            <div class="panel-hdr">On-disk</div>
+            <div class="panel-body" style="font-family:var(--mono);font-size:12px;color:var(--text-muted);">
+              schema   · v1 (SCHEMA.v1.xsd)<br/>
+              manifest · logbook v0.1 · created 2024-01-14<br/>
+              index    · SQLite, rebuildable from XML (D3)<br/>
+              locks    · none held (D9)
+            </div>
+          </div>
+        </div>
+      </section>
+
+    </main>
+  </div>
+</div>
+
+<div class="legend">
+  Click sidebar items to move between views. Rows in the Jumps table open the detail view;
+  <kbd>Edit</kbd> in detail → form view. Data is mocked and does not persist.
+</div>
+
+<script>
+// ==================================================================
+// Mock sample data — shaped to match the XSD field-for-field so the
+// UI review can judge "does this line up with the data model"
+// ==================================================================
+const JUMPS = [
+  { n:247, title:"Opening at night over the coast", date:"2026-04-20", dz:"Skydive Algarve",       ac:"Cessna 208", disc:"Freefly",    exit:4200, ff:58, canopy:"Sabre2 150", att:3 },
+  { n:246, title:"2-way sit-fly",                    date:"2026-04-19", dz:"Skydive Algarve",       ac:"Cessna 208", disc:"Freefly",    exit:4000, ff:55, canopy:"Sabre2 150", att:1 },
+  { n:245, title:"Hop-n-pop, 4k",                    date:"2026-04-18", dz:"Skydive Algarve",       ac:"Cessna 208", disc:"Canopy (CP)",exit:1200, ff:5,  canopy:"Spectre 170",att:0 },
+  { n:244, title:"Big way attempt · 12 way",         date:"2026-04-11", dz:"Skydive Empuriabrava",  ac:"Twin Otter", disc:"Belly (FS)", exit:4500, ff:62, canopy:"Sabre2 150", att:2 },
+  { n:243, title:"Belly-to-back transitions",        date:"2026-04-10", dz:"Skydive Empuriabrava",  ac:"Twin Otter", disc:"Freefly",    exit:4200, ff:60, canopy:"Sabre2 150", att:0 },
+  { n:242, title:"Night jump — full moon",           date:"2026-04-03", dz:"Skydive Algarve",       ac:"Pilatus PC-6",disc:"Belly (FS)",exit:3500, ff:48, canopy:"Spectre 170",att:4 },
+  { n:241, title:"AFF Cat E graduation",             date:"2026-03-27", dz:"Skydive Dubai — Desert",ac:"Twin Otter", disc:"Belly (FS)", exit:4000, ff:50, canopy:"Navigator 260", att:1 },
+  { n:240, title:"Wingsuit intro — first flocking",  date:"2026-03-26", dz:"Skydive Empuriabrava",  ac:"Pilatus PC-6",disc:"Wingsuit",  exit:4500, ff:75, canopy:"Sabre2 150", att:2 },
+  { n:239, title:"Camera flyer coaching jump",       date:"2026-03-20", dz:"Skydive Algarve",       ac:"Cessna 208", disc:"Belly (FS)", exit:4200, ff:60, canopy:"Sabre2 150", att:3 },
+  { n:238, title:"Head-down 3-way",                  date:"2026-03-19", dz:"Skydive Algarve",       ac:"Cessna 208", disc:"Freefly",    exit:4200, ff:57, canopy:"Sabre2 150", att:0 },
+];
+
+const EQ = [
+  { kind:"container", title:"UPT Vector V348", sub:"SN 12345 · 2024", meta:["in-use"] },
+  { kind:"canopy",    title:"PD Sabre2 150",   sub:"SN SBR-9921 · 2024", meta:["main","in-use","198 jumps"] },
+  { kind:"canopy",    title:"PD Spectre 170",  sub:"SN SPC-1180 · 2022", meta:["main","42 jumps"] },
+  { kind:"canopy",    title:"Aerodyne Pilot 210", sub:"SN APL-8810 · 2020", meta:["main","retired"] },
+  { kind:"reserve",   title:"PD Optimum 143",  sub:"SN OPT-4410 · 2023", meta:["reserve","repack 2026-02-12"] },
+  { kind:"aad",       title:"Vigil 2+",        sub:"SN VIG-77221 · 2022", meta:["service due 2028-06-01"] },
+  { kind:"aad",       title:"CYPRES 2 (retired)", sub:"SN CYP-110901 · 2014", meta:["retired"] },
+];
+
+const RIGS = [
+  {
+    id: "8b2a4d51-7c33-4b89-9d10-5f6a1c0e2d44",
+    name: "Sport rig",
+    status: "active",
+    container: "UPT Vector V348",
+    canopy: "PD Sabre2 150",
+    reserve: "PD Optimum 143",
+    aad: "Vigil 2+",
+    jumps: 198,
+    last: "2026-04-20",
+    warn: "Reserve repack 165 days ago",
+  },
+  {
+    id: "b3eaa091-4a76-4a02-9a14-22e0b1c01100",
+    name: "Big way rig",
+    status: "active",
+    container: "UPT Vector V348",
+    canopy: "PD Spectre 170",
+    reserve: "PD Optimum 143",
+    aad: "Vigil 2+",
+    jumps: 42,
+    last: "2026-04-11",
+    warn: null,
+  },
+  {
+    id: "c1f8d234-2891-49a0-bc44-e4f00091a5b6",
+    name: "Student rig (retired)",
+    status: "retired",
+    container: "Strong Dual Hawk",
+    canopy: "Navigator 260",
+    reserve: "Smart 175",
+    aad: "CYPRES 2",
+    jumps: 7,
+    last: "2024-04-30",
+    warn: null,
+  },
+];
+
+const RIG_BREAKDOWN = [
+  ["Sport rig",   198],
+  ["Big way rig",  42],
+  ["Student rig",   7],
+];
+
+const CANOPY_BREAKDOWN = [
+  ["Sabre2 150", 198],
+  ["Spectre 170", 42],
+  ["Navigator 260", 7],
+];
+const DISCIPLINE_BREAKDOWN = [
+  ["Freefly",    120],
+  ["Belly (FS)",  82],
+  ["Canopy (CP)", 28],
+  ["Wingsuit",    17],
+];
+// Months of 2026 so far — jumps/month
+const YEAR = [3, 5, 9, 15, 0, 0, 0, 0, 0, 0, 0, 0];
+
+// ==================================================================
+// Render helpers
+// ==================================================================
+function fmtMinSec(s){
+  const m = Math.floor(s/60), sec = s%60;
+  return m ? `${m}m ${sec.toString().padStart(2,"0")}s` : `${sec} s`;
+}
+
+function renderJumps(){
+  const tb = document.getElementById("jumps-rows");
+  tb.innerHTML = JUMPS.map(j => `
+    <tr data-nav="jump-detail">
+      <td class="num mono">#${j.n}</td>
+      <td>${j.date}</td>
+      <td>${j.title}</td>
+      <td>${j.dz}</td>
+      <td>${j.ac}</td>
+      <td><span class="tag">${j.disc}</span></td>
+      <td class="num">${j.exit.toLocaleString()} m</td>
+      <td class="num">${fmtMinSec(j.ff)}</td>
+      <td>${j.canopy}</td>
+      <td class="num">${j.att || "—"}</td>
+    </tr>
+  `).join("");
+}
+
+function renderEquipment(filter="all"){
+  const cards = document.getElementById("eq-cards");
+  const items = filter === "all" ? EQ : EQ.filter(e => e.kind === filter);
+  cards.innerHTML = items.map(e => `
+    <div class="eq-card" data-nav="equipment-edit">
+      <div class="title">${e.title}</div>
+      <div class="sub">${e.sub}</div>
+      <div class="meta">
+        <span class="tag">${e.kind}</span>
+        ${e.meta.map(m => `<span class="tag">${m}</span>`).join("")}
+      </div>
+    </div>
+  `).join("") || `<div class="empty" style="grid-column:1/-1;">No ${filter} equipment.</div>`;
+}
+
+function renderRigs(){
+  const cards = document.getElementById("rig-cards");
+  cards.innerHTML = RIGS.map(r => `
+    <div class="rig-card ${r.status === 'retired' ? 'retired' : ''}" data-nav="rig-edit">
+      <div class="rig-hdr">
+        <div class="name">${r.name}</div>
+        <span class="tag ${r.status === 'retired' ? '' : 'ok'}">${r.status}</span>
+        ${r.warn ? `<span class="tag warn" title="${r.warn}">!</span>` : ''}
+      </div>
+      <div class="rig-body">
+        <div class="rig-row"><span class="role">Container</span><span class="item">${r.container || '<span class="empty">— none —</span>'}</span></div>
+        <div class="rig-row"><span class="role">Main</span><span class="item">${r.canopy || '<span class="empty">— none —</span>'}</span></div>
+        <div class="rig-row"><span class="role">Reserve</span><span class="item">${r.reserve || '<span class="empty">— none —</span>'}${r.warn && r.warn.includes('repack') ? '<span class="alert">⚠ repack due</span>' : ''}</span></div>
+        <div class="rig-row"><span class="role">AAD</span><span class="item">${r.aad || '<span class="empty">— none —</span>'}</span></div>
+      </div>
+      <div class="rig-foot">
+        <span><strong>${r.jumps}</strong> jumps</span>
+        <span class="spacer"></span>
+        <span>last used ${r.last}</span>
+      </div>
+    </div>
+  `).join("");
+}
+
+function renderBars(id, data){
+  const max = Math.max(...data.map(d => d[1]));
+  document.getElementById(id).innerHTML = data.map(([label, v]) => `
+    <div class="bar-row">
+      <div>${label}</div>
+      <div class="bar-track"><div class="bar-fill" style="width:${(v/max*100).toFixed(1)}%;"></div></div>
+      <div class="bar-num">${v}</div>
+    </div>
+  `).join("");
+}
+
+function renderYear(){
+  const max = Math.max(...YEAR, 1);
+  document.getElementById("yearline").innerHTML =
+    YEAR.map(v => `<div class="yearbar" style="height:${(v/max*100).toFixed(1)}%;" title="${v} jumps"></div>`).join("");
+}
+
+// ==================================================================
+// Navigation
+// ==================================================================
+const VIEWS = ["jumps","jump-detail","jump-edit","rigs","rig-edit","equipment","equipment-edit","stats","verify","settings"];
+function show(view){
+  // Track create vs edit mode for the jump form so the attachments
+  // section can toggle between create-mode (mutable, multipart POST per
+  // D30) and edit-mode (read-only, metadata-only PUT per D31).
+  let jumpFormMode = null;
+  if(view === "jump-new"){
+    document.getElementById("edit-title").textContent = "New jump";
+    jumpFormMode = "create";
+    view = "jump-edit";
+  } else if(view === "jump-edit"){
+    document.getElementById("edit-title").textContent = "Edit jump #247";
+    jumpFormMode = "edit";
+  }
+  if(jumpFormMode){
+    const isCreate = jumpFormMode === "create";
+    document.getElementById("attach-list-edit").style.display    = isCreate ? "none" : "";
+    document.getElementById("attach-help-edit").style.display    = isCreate ? "none" : "";
+    document.getElementById("attach-list-create").style.display  = isCreate ? "" : "none";
+    document.getElementById("attach-add-create").style.display   = isCreate ? "" : "none";
+  }
+  document.querySelectorAll(".view").forEach(v => v.classList.remove("active"));
+  const el = document.getElementById("view-" + view);
+  if(el) el.classList.add("active");
+  // sidebar highlight (only for primary nav targets)
+  const primary = {jumps:"jumps", "jump-detail":"jumps", "jump-edit":"jumps",
+                   rigs:"rigs", "rig-edit":"rigs",
+                   equipment:"equipment","equipment-edit":"equipment",
+                   stats:"stats", verify:"verify", settings:"settings"}[view];
+  document.querySelectorAll(".sidebar .nav-item").forEach(n =>
+    n.classList.toggle("active", n.dataset.nav === primary));
+  // scroll main to top
+  document.querySelectorAll(".content").forEach(c => c.scrollTop = 0);
+}
+
+document.addEventListener("click", e => {
+  const t = e.target.closest("[data-nav]");
+  if(t){ e.preventDefault(); show(t.dataset.nav); }
+  const tab = e.target.closest(".eq-tab");
+  if(tab){
+    document.querySelectorAll(".eq-tab").forEach(x => x.classList.toggle("active", x===tab));
+    renderEquipment(tab.dataset.eqTab);
+  }
+});
+
+// Kind-specific fields in equipment form
+document.getElementById("eq-kind").addEventListener("change", e => {
+  document.querySelector(".eq-reserve-only").style.display = e.target.value === "reserve" ? "" : "none";
+  document.querySelector(".eq-aad-only").style.display     = e.target.value === "aad"     ? "" : "none";
+});
+
+// Init
+renderJumps();
+renderRigs();
+renderEquipment("all");
+renderBars("canopy-bars", CANOPY_BREAKDOWN);
+renderBars("discipline-bars", DISCIPLINE_BREAKDOWN);
+renderBars("rig-bars", RIG_BREAKDOWN);
+renderYear();
+show("jumps");
+</script>
+</body>
+</html>

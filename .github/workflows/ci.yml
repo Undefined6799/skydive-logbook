@@ -1,0 +1,116 @@
+# CI for skydive-logbook backend.
+#
+# Runs `ruff check`, `pyright`, and `pytest` on every push and PR
+# across the matrix that ships in pyproject.toml's classifiers
+# (D15 — Python 3.11+): Python 3.11 / 3.12 / 3.13 × Ubuntu / macOS /
+# Windows. Type-checking, lint, and tests are the green-light triple
+# documented in CLAUDE.md §7.
+#
+# Uses uv for venv + install — same toolchain as local dev, so a CI
+# resolve mirrors what a contributor's machine produces. uv.lock is the
+# source of truth for transitive pins; we install with `uv sync` to
+# honour it (D26 contracts and the Slice 3 starlette/python-multipart
+# CVE pins all flow through the lockfile).
+#
+# `concurrency` cancels stale runs on a branch when a new commit lands,
+# so a force-push doesn't burn matrix minutes on the abandoned SHA.
+
+name: CI
+
+on:
+  push:
+    branches: ["**"]
+  pull_request:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    name: ruff + pyright + pytest (py${{ matrix.python }} on ${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest, windows-latest]
+        python: ["3.11", "3.12", "3.13"]
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Install uv
+        # setup-uv v8.1.0+ no longer publishes floating major/minor tags
+        # (https://github.com/astral-sh/setup-uv/releases) — pin to the
+        # immutable patch tag so CI cannot resolve a different action
+        # version under us. Bump deliberately when a uv feature we want
+        # lands.
+        uses: astral-sh/setup-uv@v8.1.0
+        with:
+          enable-cache: true
+
+      - name: Set up Python ${{ matrix.python }}
+        run: uv python install ${{ matrix.python }}
+
+      - name: Install dependencies
+        # `uv sync --extra dev` installs the project (editable) plus the
+        # dev extras (pytest, pytest-asyncio, httpx, ruff, pyright). The
+        # desktop extra (pywebview) is intentionally excluded — CI is
+        # headless, and pywebview's GUI deps fail to install on Linux
+        # runners without extra system packages we don't need for
+        # backend tests.
+        run: uv sync --extra dev
+
+      - name: Lint (ruff)
+        run: uv run ruff check backend
+
+      - name: Type-check (pyright)
+        # Pyright reads ``pythonVersion = "3.11"`` from pyproject.toml's
+        # ``[tool.pyright]`` block, so analysis targets 3.11 syntax/
+        # stdlib regardless of the runtime ``${{ matrix.python }}``.
+        # Running on every matrix cell is intentional — it catches
+        # platform-specific stub differences (Windows-only types,
+        # macOS-specific signatures) that a single-cell run would miss.
+        run: uv run pyright backend
+
+      - name: Test (pytest)
+        run: uv run pytest backend/tests
+
+  frontend:
+    name: vitest smoke (Node ${{ matrix.node }} on ubuntu-latest)
+    runs-on: ubuntu-latest
+    # Frontend smoke tests are Node-only; one Node LTS is enough to
+    # catch import-drift bugs (TEST-8 — audit 2026-04-29). The full
+    # cross-OS matrix the backend job runs would burn CI minutes
+    # without catching anything the Linux job doesn't already.
+    strategy:
+      fail-fast: false
+      matrix:
+        node: ["20"]
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Node ${{ matrix.node }}
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ matrix.node }}
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Install frontend dependencies
+        working-directory: frontend
+        # ``npm ci`` is the lockfile-honouring install; faster + more
+        # deterministic than ``npm install`` for CI. Falls back to
+        # ``npm install`` only if the lockfile is missing — which
+        # would itself be a bug to catch.
+        run: npm ci
+
+      - name: Vitest smoke
+        working-directory: frontend
+        run: npm test

@@ -1,0 +1,20 @@
+# Example app-level config for skydive-logbook.
+#
+# Per D20, the real file lives in the OS user config dir:
+#   macOS:   ~/Library/Application Support/skydive-logbook/config.toml
+#   Windows: %APPDATA%\skydive-logbook\config.toml
+#   Linux:   $XDG_CONFIG_HOME/skydive-logbook/config.toml
+#            (falling back to ~/.config/skydive-logbook/config.toml)
+#
+# Per-logbook preferences (units, jumper name, default DZ) live INSIDE the
+# logbook folder in settings.xml — not here.
+
+# Path to the logbook folder. Defaults to ~/SkydiveLogbook.
+logbook_root = "~/SkydiveLogbook"
+
+# REST API binding. Default is localhost-only — v0.1 ships as a
+# single-user desktop app with no authentication surface (D48). Changing
+# bind_host to a non-loopback address would expose the API to the LAN
+# unauthenticated; that deployment shape is out of v0.1 scope.
+bind_host = "127.0.0.1"
+bind_port = 8765

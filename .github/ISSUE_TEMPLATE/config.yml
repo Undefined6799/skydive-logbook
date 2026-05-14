@@ -1,0 +1,18 @@
+# Disable blank issues so every report flows through a template; blank
+# issues land without the version/OS/repro fields a maintainer needs.
+blank_issues_enabled: false
+
+contact_links:
+  - name: Report a security vulnerability
+    url: https://github.com/REPLACE_WITH_OWNER/skydive-logbook/security/advisories/new
+    about: |
+      Security issues must NOT be filed as public issues. Use GitHub's
+      private vulnerability reporting (the link above) so a fix can
+      ship before disclosure. See SECURITY.md for details.
+
+  - name: Ask a question or share an idea
+    url: https://github.com/REPLACE_WITH_OWNER/skydive-logbook/discussions
+    about: |
+      Open-ended questions and ideas belong in Discussions, not in the
+      issue tracker. The issue tracker is for bugs and concrete
+      feature proposals.

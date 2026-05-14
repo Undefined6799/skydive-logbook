@@ -1,0 +1,174 @@
+// MedicalsEditor — D56 Phase 4.
+//
+// Editable counterpart to CompactMedicals. Drives every change through
+// the staged-state mutation helpers so the parent form's single Save
+// can compute one diff for the Phase 5 orchestrator.
+//
+// Scope this slice covers:
+//   - Edit kind / issuing_authority / expiry_date on existing medicals
+//   - Add a new medical (kind defaults to class_iii — the only enum
+//     member in v0.1 per D47; the select still renders so future
+//     enum additions are an additive change)
+//   - Delete any row
+//
+// Out of scope (deferred):
+//   - Editing notes / card_attachment_id (same posture as the other
+//     editors — attachment editing arrives after the Phase 5 save
+//     orchestrator settles)
+
+import React from 'react';
+import { Plus, Trash2 } from 'lucide-react';
+import {
+  MEDICAL_KINDS,
+  ExpiryChip,
+  CardChip,
+  inputCls,
+} from './Profile';
+import { setRowField, addRow, removeRow } from './identityEditStaged';
+
+
+function newTmpId() {
+  if (typeof crypto !== 'undefined' && crypto.randomUUID) {
+    return `tmp-${crypto.randomUUID()}`;
+  }
+  return `tmp-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+}
+
+
+export default function MedicalsEditor({ staged, setStaged, jumper }) {
+  const visible = staged.medicals.filter((r) => r.status !== 'deleted');
+
+  function patch(id, p) {
+    setStaged((s) => setRowField(s, 'medicals', id, p));
+  }
+  function del(id) {
+    setStaged((s) => removeRow(s, 'medicals', id));
+  }
+  function add() {
+    setStaged((s) => addRow(s, 'medicals', {
+      id: newTmpId(),
+      kind: 'class_iii',
+      issuing_authority: '',
+      expiry_date: '',
+      card_attachment_id: null,
+      notes: null,
+    }));
+  }
+
+  return (
+    <div>
+      <div className="flex items-center justify-between mb-2">
+        <h2 className="text-[11px] tracking-[0.2em] text-neutral-300 font-medium">
+          MEDICALS
+        </h2>
+        <button
+          type="button"
+          onClick={add}
+          aria-label="Add Medical"
+          className="px-2 py-1 rounded text-[10px] font-medium flex items-center gap-1 transition hover:bg-neutral-800/50"
+          style={{
+            background: 'transparent',
+            color: 'var(--text-muted)',
+            border: '0.5px solid var(--border-strong)',
+          }}
+        >
+          <Plus className="w-2.5 h-2.5" />
+          Add
+        </button>
+      </div>
+
+      {visible.length === 0 && (
+        <div className="text-[11px] text-neutral-500 px-2 py-2">
+          None recorded.
+        </div>
+      )}
+
+      <div className="space-y-1.5">
+        {visible.map((row) => (
+          <MedicalRowEditor
+            key={row.id}
+            row={row}
+            jumper={jumper}
+            onChange={(p) => patch(row.id, p)}
+            onDelete={() => del(row.id)}
+          />
+        ))}
+      </div>
+    </div>
+  );
+}
+
+
+function MedicalRowEditor({ row, jumper, onChange, onDelete }) {
+  return (
+    <div
+      className="grid grid-cols-[1fr_auto_auto] items-center gap-2 py-1.5 px-2 rounded"
+      style={{ background: 'var(--surface-1)' }}
+    >
+      <div className="flex items-center gap-2 flex-wrap min-w-0">
+        <select
+          value={row.kind || ''}
+          onChange={(e) => onChange({ kind: e.target.value })}
+          aria-label="Medical kind"
+          className={`${inputCls} max-w-[140px]`}
+        >
+          {MEDICAL_KINDS.map(([v, label]) => (
+            <option key={v} value={v}>{label}</option>
+          ))}
+        </select>
+        <input
+          value={row.issuing_authority || ''}
+          onChange={(e) => onChange({ issuing_authority: e.target.value })}
+          placeholder="issuing authority"
+          maxLength={120}
+          aria-label="Issuing authority"
+          className={`${inputCls} max-w-[220px]`}
+        />
+        <input
+          type="date"
+          value={row.expiry_date || ''}
+          onChange={(e) => onChange({ expiry_date: e.target.value })}
+          aria-label="Medical expiry date"
+          className={`${inputCls} max-w-[150px]`}
+        />
+        {row.expiry_date && <ExpiryChip date={row.expiry_date} />}
+        {row.card_attachment_id && <CardChip jumper={jumper} attachmentId={row.card_attachment_id} />}
+      </div>
+      <RowStatusChip status={row.status} />
+      <DeleteRowButton onClick={onDelete} aria="Delete medical" />
+    </div>
+  );
+}
+
+
+function RowStatusChip({ status }) {
+  if (status === 'unchanged' || status === 'deleted') {
+    return <span aria-hidden className="w-0" />;
+  }
+  const isNew = status === 'new';
+  const style = isNew
+    ? { color: 'var(--status-ready)', background: 'rgba(134,239,172,0.10)', border: '0.5px solid rgba(134,239,172,0.30)' }
+    : { color: 'var(--status-watch)', background: 'rgba(251,191,36,0.10)', border: '0.5px solid rgba(251,191,36,0.30)' };
+  return (
+    <span
+      className="text-[9px] tracking-[0.15em] px-1.5 py-0.5 rounded-full flex-shrink-0"
+      style={style}
+    >
+      {isNew ? 'NEW' : 'EDITED'}
+    </span>
+  );
+}
+
+
+function DeleteRowButton({ onClick, aria }) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      aria-label={aria}
+      className="p-1.5 rounded text-neutral-400 hover:text-red-300 hover:bg-red-900/30 transition flex-shrink-0"
+    >
+      <Trash2 className="w-3.5 h-3.5" />
+    </button>
+  );
+}

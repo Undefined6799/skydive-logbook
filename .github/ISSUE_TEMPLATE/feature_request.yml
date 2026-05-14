@@ -1,0 +1,76 @@
+name: Feature request
+description: Suggest a new capability or change in behaviour.
+title: "feat: "
+labels: ["enhancement", "triage"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for taking the time to propose this.
+
+        **Read this first:** v0.1 has a deliberately narrow scope
+        (`DECISIONS.md` D14). The following are explicitly **deferred**
+        — feature requests that pull them into scope will be closed:
+        FlySight parsing, digital-signature enforcement, multi-user
+        accounts, import from other logbook apps, video thumbnails, a
+        mobile app, a headless-server deployment story, auto-update.
+
+        If your proposal touches the public REST API surface, the XML
+        schema, or the on-disk storage layout, please skim
+        `DECISIONS.md` for a relevant D-entry before opening this.
+
+  - type: textarea
+    id: problem
+    attributes:
+      label: What problem are you trying to solve?
+      description: |
+        Describe the underlying problem, not just the feature you've
+        already designed. A good first line is "I'm trying to ___ but
+        the app makes it hard because ___."
+      placeholder: |
+        I jump at two dropzones and want to see my per-dropzone jump
+        counts at a glance, but the dashboard only shows the lifetime
+        total.
+    validations:
+      required: true
+
+  - type: textarea
+    id: proposal
+    attributes:
+      label: Proposed solution
+      description: |
+        What change would solve the problem? UI mockups (ASCII or a
+        rough image) are welcome. If you're proposing a new REST
+        endpoint, include the URL shape, method, request body, and
+        success response.
+    validations:
+      required: true
+
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives considered
+      description: |
+        What other shapes did you think about? Why are those worse?
+        "I considered X but it would require Y" is more useful than a
+        blank field.
+
+  - type: textarea
+    id: who
+    attributes:
+      label: Who is this for?
+      description: |
+        Are you the only user who would benefit, or is this a common
+        ask? Best guesses are fine.
+
+  - type: checkboxes
+    id: checks
+    attributes:
+      label: Pre-submission checks
+      options:
+        - label: I have searched [existing issues and discussions](../../issues?q=is%3Aissue) for similar proposals.
+          required: true
+        - label: I have read `DECISIONS.md` for any decision that already covers (or excludes) this.
+          required: true
+        - label: This isn't on the v0.1 deferred list (FlySight parsing, multi-user, import, signing, video, mobile, headless, auto-update).
+          required: true

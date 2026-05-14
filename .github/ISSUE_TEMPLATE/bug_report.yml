@@ -1,0 +1,118 @@
+name: Bug report
+description: Something doesn't work as expected.
+title: "bug: "
+labels: ["bug", "triage"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for taking the time to file this.
+
+        **Before you continue:** if this is a security vulnerability,
+        do NOT use this form. Use GitHub's private vulnerability
+        reporting instead — see [SECURITY.md](../../SECURITY.md).
+
+  - type: textarea
+    id: what-happened
+    attributes:
+      label: What happened
+      description: |
+        A clear, one-paragraph description of the bug. What did you do,
+        what did you see, and what did you expect?
+      placeholder: |
+        I created a jump with a title containing a forward slash and …
+    validations:
+      required: true
+
+  - type: textarea
+    id: repro
+    attributes:
+      label: Steps to reproduce
+      description: |
+        The exact commands or UI actions needed to reproduce. Smaller
+        is better — if you can reduce it to a `curl` against the REST
+        API, even better.
+      placeholder: |
+        1. Open the app
+        2. Click "Log a jump"
+        3. Enter "title with / slash"
+        4. Click Save
+      render: markdown
+    validations:
+      required: true
+
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected behaviour
+      description: What did you expect to happen?
+    validations:
+      required: true
+
+  - type: textarea
+    id: actual
+    attributes:
+      label: Actual behaviour
+      description: |
+        What actually happened? Paste any error messages, request IDs
+        (X-Request-Id header or `request_id` in the problem+json
+        response), or relevant log lines verbatim in a code block.
+    validations:
+      required: true
+
+  - type: input
+    id: version
+    attributes:
+      label: Skydive Logbook version
+      description: |
+        Output of `skydive-logbook --version`, or the commit SHA you
+        built from. Don't say "latest" — the project moves fast.
+      placeholder: "0.1.0.dev42+gabcdef0"
+    validations:
+      required: true
+
+  - type: dropdown
+    id: os
+    attributes:
+      label: Operating system
+      options:
+        - macOS (Apple Silicon)
+        - macOS (Intel)
+        - Windows 11
+        - Windows 10
+        - Linux (Ubuntu / Debian family)
+        - Linux (Fedora / RHEL family)
+        - Linux (Arch / other)
+        - Other (mention in "What happened")
+    validations:
+      required: true
+
+  - type: input
+    id: python
+    attributes:
+      label: Python version
+      description: Output of `python --version`.
+      placeholder: "Python 3.12.4"
+    validations:
+      required: true
+
+  - type: textarea
+    id: logs
+    attributes:
+      label: Relevant log lines
+      description: |
+        Paste any JSON log lines (one per line) that correlate with the
+        failing request. The `request_id` field matches the
+        `X-Request-Id` header so we can trace your bug from server to
+        response.
+      render: text
+
+  - type: checkboxes
+    id: checks
+    attributes:
+      label: Pre-submission checks
+      options:
+        - label: I have searched [existing issues](../../issues?q=is%3Aissue) for duplicates.
+          required: true
+        - label: This is not a security vulnerability (those go through SECURITY.md).
+          required: true

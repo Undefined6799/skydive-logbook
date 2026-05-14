@@ -1,0 +1,47 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+.venv-*/
+venv/
+.pytest_cache/
+.ruff_cache/
+
+# Build artifacts
+build/
+dist/
+*.whl
+
+# Frontend (Vite + npm)
+frontend/node_modules/
+frontend/dist/
+frontend/.vite/
+# Vite and Vitest each write transient timestamp-suffixed config
+# copies on HMR config reloads; they should never be committed.
+frontend/vite.config.*.timestamp-*.mjs
+frontend/vitest.config.*.timestamp-*.mjs
+
+# Backup files left by editors and automated tooling. The project has
+# no manual-backup workflow; *.bak* under source tree is always cruft.
+*.bak
+*.bak[0-9]
+*.bak[0-9][0-9]
+
+# Stray pytest cache directories (the canonical .pytest_cache/ is
+# already gitignored above; this catches the older numeric-suffix form
+# some pytest plugins emit).
+pytest-cache-files-*/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Editor
+.idea/
+.vscode/
+*.swp
+
+# Local logbook data (never commit a real logbook)
+SkydiveLogbook/
+test_logbook/

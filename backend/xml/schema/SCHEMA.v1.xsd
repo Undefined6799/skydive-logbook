@@ -1,0 +1,1834 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  Skydive Logbook — on-disk XML schema, version 1.
+
+  Namespace: https://skydive-logbook.org/schema/v1
+  Every XML file the logbook produces (jump.xml, dropzone records,
+  rig-manager components per D33+D34) declares this namespace as its
+  default namespace. The file exists INSIDE the logbook folder (D18) so
+  third-party tools can validate without the app.
+
+  Additive changes to this schema (new optional elements, new optional
+  attributes) remain in v1. Breaking changes get a new schema file
+  (SCHEMA.v2.xsd) with a new namespace.
+
+  Authoring convention for xs:documentation blocks: do NOT use
+  literal angle brackets when referring to elements. lxml's XSD
+  parser reads the body of xs:documentation as element content, so
+  a literal "left-angle lineset right-angle" (or any bracket-name-
+  bracket) is parsed as an opening tag and breaks the schema.
+  Refer to elements bare ("the lineset element", "the
+  current_lineset child") or with backticks (`current_lineset`).
+  The XML comment blocks separating top-level sections of this
+  file are literal text and are unaffected by the rule, but they
+  cannot contain a double-hyphen sequence anywhere — XML 1.0
+  forbids it inside comments.
+
+  See DECISIONS.md for the rationale behind each field.
+-->
+<xs:schema xmlns:xs="http://www.w3.org/2001/XMLSchema"
+           xmlns="https://skydive-logbook.org/schema/v1"
+           targetNamespace="https://skydive-logbook.org/schema/v1"
+           elementFormDefault="qualified"
+           version="1.0">
+
+  <!-- ================================================================
+       Reusable simple types
+       ================================================================ -->
+
+  <xs:simpleType name="UUID">
+    <xs:annotation><xs:documentation>
+      UUIDv4 in canonical hyphenated lowercase form (RFC 4122 §4.1.1).
+      The pattern enforces the version nibble (3rd group starts with
+      "4") and the variant bits (4th group starts with 8, 9, a, or b),
+      so any non-v4 UUID is rejected at schema-validation time — not
+      silently accepted and then rejected by Pydantic.
+    </xs:documentation></xs:annotation>
+    <xs:restriction base="xs:string">
+      <xs:pattern value="[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}"/>
+    </xs:restriction>
+  </xs:simpleType>
+
+  <xs:simpleType name="IANATimezone">
+    <xs:annotation><xs:documentation>
+      IANA tz database name, e.g. America/Los_Angeles, Europe/London,
+      Etc/GMT+10. Applied to the optional time-of-day on a jump (D17);
+      absent means unspecified local.
+
+      Pattern is intentionally permissive — it catches obvious garbage
+      (empty, leading digit, shell metacharacters) but lets any IANA
+      identifier through, including the Etc/GMT±N series. The real
+      resolvability check happens in the service layer via
+      zoneinfo.ZoneInfo().
+    </xs:documentation></xs:annotation>
+    <xs:restriction base="xs:string">
+      <xs:pattern value="[A-Za-z][A-Za-z0-9+\-_/]*"/>
+      <xs:maxLength value="64"/>
+    </xs:restriction>
+  </xs:simpleType>
+
+  <xs:simpleType name="TimeOfDay">
+    <xs:annotation><xs:documentation>
+      Local clock time HH:MM:SS (24-hour). Narrower than xs:time, which
+      allows fractional seconds and offsets — we forbid both so the
+      round-trip through Python's time.fromisoformat() is exact (D17).
+    </xs:documentation></xs:annotation>
+    <xs:restriction base="xs:string">
+      <xs:pattern value="([01][0-9]|2[0-3]):[0-5][0-9]:[0-5][0-9]"/>
+    </xs:restriction>
+  </xs:simpleType>
+
+  <xs:simpleType name="SHA256Hex">
+    <xs:restriction base="xs:string">
+      <xs:pattern value="[0-9a-f]{64}"/>
+    </xs:restriction>
+  </xs:simpleType>
+
+  <xs:simpleType name="Filename">
+    <xs:annotation><xs:documentation>
+      Attachment filename. Same portability rules as folder names (D4,
+      Q5): no forbidden characters, 1..255 bytes. The exact character
+      rules are enforced additionally at the Pydantic layer
+      (sanitize_filename); this XSD check is the broad strokes so that
+      XML written by third-party tools can be rejected without loading
+      Python code.
+
+      Excluded characters:
+        - Cross-platform forbidden: / \ : * ? " &lt; &gt; |
+        - Whitespace controls: TAB (\t), LF (\n), CR (\r)
+        - DEL (&#x7F;)
+
+      The other C0 control characters (U+0001..U+0008, U+000B, U+000C,
+      U+000E..U+001F) and NUL (U+0000) do not need explicit exclusion
+      here: they are outside the XML 1.0 character set
+      (https://www.w3.org/TR/xml/#charsets), so an XML document
+      containing them cannot parse in the first place. Mentioning them
+      in an xs:pattern via &amp;#x01; etc. is itself a parse error.
+    </xs:documentation></xs:annotation>
+    <xs:restriction base="xs:string">
+      <xs:minLength value="1"/>
+      <xs:maxLength value="255"/>
+      <xs:pattern value='[^/\\:\*\?&quot;&lt;&gt;\|&#x7F;\t\n\r]+'/>
+    </xs:restriction>
+  </xs:simpleType>
+
+  <xs:simpleType name="EnvironmentKind">
+    <xs:annotation><xs:documentation>
+      Closed enum of jumping-environment values that feed line-wear
+      math (D45). Three values cover Peelman's article verbatim:
+
+        clean_grass     +0.00 lb/jump delta — the unmodified baseline
+        dust_sand_salt  +0.20 lb/jump delta — Peelman's "packing in
+                                              dusty / sandy / salty
+                                              conditions" applied as
+                                              an ambient-environment
+                                              multiplier
+        desert          +0.25 lb/jump delta — desert-DZ ambient (Eloy,
+                                              Skydive Arizona, etc.);
+                                              one notch above
+                                              dust_sand_salt per Alex's
+                                              2026-04-27 confirmation
+
+      Closed-enum discipline mirrors D22 / D34 — adding a fourth
+      environment is an XSD change, not a runtime config tweak, so
+      the wear-math contract stays auditable (D45).
+    </xs:documentation></xs:annotation>
+    <xs:restriction base="xs:string">
+      <xs:enumeration value="clean_grass"/>
+      <xs:enumeration value="dust_sand_salt"/>
+      <xs:enumeration value="desert"/>
+    </xs:restriction>
+  </xs:simpleType>
+
+  <xs:simpleType name="CountryCode">
+    <xs:annotation><xs:documentation>
+      ISO 3166-1 alpha-2 country code (D44). Two uppercase ASCII
+      letters: CA, US, FR, JP, AU. Strict over free text so the
+      "where have I jumped" stats view groups cleanly without typo
+      partitions ("Canada" vs "canada" vs "CA"). The XSD enforces
+      shape; we do not validate against the live ISO list at this
+      layer (XX / ZZ pass shape but are not assigned). A future
+      Pydantic-side validator can tighten if needed.
+    </xs:documentation></xs:annotation>
+    <xs:restriction base="xs:string">
+      <xs:pattern value="[A-Z]{2}"/>
+    </xs:restriction>
+  </xs:simpleType>
+
+  <xs:simpleType name="JumpTitle">
+    <xs:annotation><xs:documentation>
+      Human-readable label for a jump, mirrored into the folder name
+      per D4. Optional, free text, no uniqueness requirement. Max 120
+      Unicode characters — comfortably under the 255-byte filename cap
+      even for emoji-dense UTF-8, and short enough that a file manager
+      row still lays out legibly. Empty/absent → folder name is just
+      ``[&lt;jump#&gt;]``.
+    </xs:documentation></xs:annotation>
+    <xs:restriction base="xs:string">
+      <xs:minLength value="1"/>
+      <xs:maxLength value="120"/>
+    </xs:restriction>
+  </xs:simpleType>
+
+  <xs:simpleType name="JumpTypeKind">
+    <xs:annotation><xs:documentation>
+      Closed enum (D53) for the role/purpose of a jump. Disjoint from
+      `discipline` (free text — captures *how* you flew: angle,
+      tracking, belly, freefly, …); jump_types captures *what the
+      jump was for*. Multi-valued at the jump level — a camera flyer
+      on an angle is one jump with two jump_types.
+
+      Values:
+        regular_jump — recreational jump, no formal role (default)
+        coaching    — coach-rated instructor giving a coach jump
+        instructing — AFF / ISP / FJC instructor on an instructional jump
+        camera      — camera flyer
+        organizing  — organising/leading a group skydive
+        coached     — student receiving coaching
+        instructed  — student receiving formal instruction (AFF / ISP / etc.)
+
+      Tandem stays on `is_tandem` (D47, Phase B.4); the currency
+      calculator reads it. Two sources of truth for the same fact
+      would be a bug factory.
+
+      Closed-enum discipline mirrors D22 / D34 / D47. Adding a value
+      is additive within v1 per D18; removing one needs a new
+      schema namespace.
+    </xs:documentation></xs:annotation>
+    <xs:restriction base="xs:string">
+      <xs:enumeration value="regular_jump"/>
+      <xs:enumeration value="coaching"/>
+      <xs:enumeration value="instructing"/>
+      <xs:enumeration value="camera"/>
+      <xs:enumeration value="organizing"/>
+      <xs:enumeration value="coached"/>
+      <xs:enumeration value="instructed"/>
+    </xs:restriction>
+  </xs:simpleType>
+
+  <xs:simpleType name="ComponentStatus">
+    <xs:annotation><xs:documentation>
+      Closed lifecycle enum for every rig-manager component (D33, D34).
+      Adding a value is additive within v1 per D18; removing or
+      renaming requires a new schema namespace.
+
+      Semantics:
+        active         — in service. Visible in swap dropdowns.
+        retired        — end-of-life decision. Hidden from swap pickers,
+                         preserved on the XML for history.
+        sold           — owner no longer holds it. Same UI treatment as
+                         retired; distinct value for record-keeping.
+        out_of_service — temporarily unavailable (e.g. awaiting service).
+                         Hidden from swap pickers; can return to active.
+    </xs:documentation></xs:annotation>
+    <xs:restriction base="xs:string">
+      <xs:enumeration value="active"/>
+      <xs:enumeration value="retired"/>
+      <xs:enumeration value="sold"/>
+      <xs:enumeration value="out_of_service"/>
+    </xs:restriction>
+  </xs:simpleType>
+
+  <xs:simpleType name="Jurisdiction">
+    <xs:annotation><xs:documentation>
+      Closed enum of regulatory jurisdictions whose repack calendar
+      and rigger rules apply to a rig (D33) or to a single repack
+      seal (D38). Three values cover the v0.1 surface:
+
+        USPA — United States Parachute Association. 180-day repack
+               clock; rigger seal rules per the FAR / USPA SIM.
+        CSPA — Canadian Sport Parachuting Association. 270-day
+               repack clock.
+        both — Rig is jumped under both jurisdictions; both clocks
+               apply and the soonest-due wins for status colors.
+
+      A single simpleType is reused in two contexts: the rig's
+      ``jurisdiction`` (which rule set governs this rig today) and
+      a repack event's ``jurisdiction_seal`` (which jurisdiction's
+      seal the rigger affixed at this repack). Different concepts,
+      same value space — collapsing to one type avoids drift.
+
+      Closed-enum discipline mirrors D22 / D34. Adding a value
+      (e.g. APF for Australia) is additive within v1 per D18.
+    </xs:documentation></xs:annotation>
+    <xs:restriction base="xs:string">
+      <xs:enumeration value="USPA"/>
+      <xs:enumeration value="CSPA"/>
+      <xs:enumeration value="both"/>
+    </xs:restriction>
+  </xs:simpleType>
+
+  <xs:simpleType name="RigNickname">
+    <xs:annotation><xs:documentation>
+      Human-readable name for a rig, mirrored into the folder name
+      under ``logbook_root/rigs/&lt;nickname&gt;/`` per D33 + D4's
+      sanitize-and-rename pattern. Required (a rig folder must have
+      a name); free text bounded at 120 chars to match JumpTitle and
+      DropzoneName so listing UIs lay out predictably and the value
+      stays well under the 255-byte filename cap.
+    </xs:documentation></xs:annotation>
+    <xs:restriction base="xs:string">
+      <xs:minLength value="1"/>
+      <xs:maxLength value="120"/>
+    </xs:restriction>
+  </xs:simpleType>
+
+  <xs:simpleType name="JumperName">
+    <xs:annotation><xs:documentation>
+      Optional display name for a jumper (D33). Free text bounded at
+      120 chars to match the other display-name fields. Optional
+      because v0.1 ships single-jumper and the file is implicitly
+      "the logbook owner"; the field is preserved for rig snapshots,
+      printouts, and forward-compat with multi-jumper logbooks.
+    </xs:documentation></xs:annotation>
+    <xs:restriction base="xs:string">
+      <xs:minLength value="1"/>
+      <xs:maxLength value="120"/>
+    </xs:restriction>
+  </xs:simpleType>
+
+  <!-- ================================================================
+       D47 — Jumper credential enums
+
+       Five parallel credential collections live on the jumper
+       (memberships, CoPs, ratings, tandem ratings, medicals). The
+       seven simple types below are their closed-enum value spaces.
+       Every enumeration is sourced and the source is cited inline
+       so the on-disk XML stays self-describing (D5).
+
+       Why per-org enums (CSPACopLevel / USPACopLevel / CSPARatingCode
+       / USPARatingCode) rather than one shared enum: each federation
+       publishes its own controlled vocabulary on its own renewal
+       cycle. Sharing a value space would force CSPA-only values to
+       appear in USPA dropdowns and vice versa, and it would couple
+       schema bumps across federations. Per-org enums keep each
+       vocabulary auditable independently. The matching org is held
+       in the parent record's ``org`` field; cross-field consistency
+       (this code is valid for that org) is enforced at the
+       Pydantic / service layer because XSD 1.0 has no xs:assert.
+
+       D47-only types (Phase B.1, 2026-04-29). The complex types that
+       reference these land in B.2; the JumperContent extension and
+       jump-side ``is_tandem`` land in B.3.
+       ================================================================ -->
+
+  <xs:simpleType name="OrgEnum">
+    <xs:annotation><xs:documentation>
+      The skydiving federation that issued a membership / CoP / rating.
+      Closed enum with an `OTHER` escape hatch — when ``OTHER`` is
+      selected the parent record's `org_other` field carries a free-
+      text federation name and the per-org code enums do not apply
+      (the parent's `code` / `level` field becomes free text).
+
+      Sources:
+        CSPA — https://www.cspa.ca/en/learn-skydive/get-certified
+        USPA — https://www.uspa.org/experienced-skydivers/uspa-membership/membership-faq
+
+      Why uppercase tokens: matches the existing Jurisdiction enum
+      convention for federation acronyms. The shared casing also
+      makes a future merge with Jurisdiction (if v1.x ever needs
+      one) trivially compatible.
+    </xs:documentation></xs:annotation>
+    <xs:restriction base="xs:string">
+      <xs:enumeration value="CSPA"/>
+      <xs:enumeration value="USPA"/>
+      <xs:enumeration value="OTHER"/>
+    </xs:restriction>
+  </xs:simpleType>
+
+  <xs:simpleType name="CSPACopLevel">
+    <xs:annotation><xs:documentation>
+      CSPA Certificate of Proficiency (CoP) levels. Five sequential
+      certificates, all confirmed against cspa.ca/en/cop and the
+      per-letter pages 2026-04-29:
+
+        solo  — Solo Certificate (10 jumps, 3 min freefall, FJC done)
+        a     — A CoP (25 jumps, FAI-recognized first level)
+        b     — B CoP (50 jumps)
+        c     — C CoP (200 jumps)
+        d     — D CoP (500 jumps)
+
+      Sources:
+        https://www.cspa.ca/en/learn-skydive/get-certified/solo-certificate
+        https://www.cspa.ca/en/cop
+        https://www.cspa.ca/en/learn-skydive/get-certified/b-cop
+        https://www.cspa.ca/en/learn-skydive/get-certified/c-cop
+        https://www.cspa.ca/en/learn-skydive/get-certified/d-cop
+
+      Lowercase letter form follows cspa.ca's own URL convention
+      (`/en/cop`, `/b-cop`, `/c-cop`, `/d-cop`). CSPA writes the
+      display label as "Solo Certificate" / "A CoP" / "B CoP" /
+      "C CoP" / "D CoP"; the renderer composes the label from the
+      enum token + the org.
+
+      CoPs do not expire by date. They become null and void when
+      currency lapses — recorded as `issued_date` on the parent
+      record (D47); v0.1 does not compute "is your CoP current".
+    </xs:documentation></xs:annotation>
+    <xs:restriction base="xs:string">
+      <xs:enumeration value="solo"/>
+      <xs:enumeration value="a"/>
+      <xs:enumeration value="b"/>
+      <xs:enumeration value="c"/>
+      <xs:enumeration value="d"/>
+    </xs:restriction>
+  </xs:simpleType>
+
+  <xs:simpleType name="USPACopLevel">
+    <xs:annotation><xs:documentation>
+      USPA license levels — A, B, C, D. USPA does not issue a Solo
+      certificate (the closest analogue is the USPA Coach-supervised
+      pre-A progression, which is not a credential). PRO is a rating,
+      not a license, so it lives in USPARatingCode below.
+
+      Sources:
+        https://www.uspa.org/sim/3-1
+        https://www.uspa.org/SIM/6-4
+    </xs:documentation></xs:annotation>
+    <xs:restriction base="xs:string">
+      <xs:enumeration value="a"/>
+      <xs:enumeration value="b"/>
+      <xs:enumeration value="c"/>
+      <xs:enumeration value="d"/>
+    </xs:restriction>
+  </xs:simpleType>
+
+  <xs:simpleType name="CSPARatingCode">
+    <xs:annotation><xs:documentation>
+      CSPA-issued ratings. Coach tier (C1, C2, C3 with four
+      specialties), Jump Master tier (full + restricted), Ground
+      Control / Skydiving School / Progressive Free Fall / examiner
+      and learning-facilitator roles, four Rigger tiers + Rigger
+      Instructor and Examiner, plus the Exhibition Jump Rating
+      annual currency.
+
+      All values confirmed against cspa.ca 2026-04-29:
+        https://www.cspa.ca/en/ratings/become-coach
+        https://www.cspa.ca/en/ratings/become-instructor
+        https://www.cspa.ca/en/ratings/ratings-currency-and-revalidation
+        https://www.cspa.ca/en/become-rigger
+        https://www.cspa.ca/en/ratings/exhibition-jump-rating
+
+      CSPA Tandem Instructor is deliberately omitted — tandem
+      ratings are manufacturer-issued (UPT, Strong) and live in
+      TandemSystem, not here. CSPA does not publish a Tandem
+      Instructor program in publicly accessible materials (cspa.ca
+      searched 2026-04-29 — see D47 "Could not confirm" §2). If a
+      future review of the CIM confirms a CSPA-side TI rating, it
+      lands additively per D18.
+
+      Closed-enum discipline (D22 / D34 / D47): adding a value is an
+      additive XSD change. Removing one needs a new namespace.
+    </xs:documentation></xs:annotation>
+    <xs:restriction base="xs:string">
+      <xs:enumeration value="c1"/>
+      <xs:enumeration value="c2"/>
+      <xs:enumeration value="c3_wingsuit"/>
+      <xs:enumeration value="c3_canopy_piloting"/>
+      <xs:enumeration value="c3_freefly"/>
+      <xs:enumeration value="c3_canopy_formation"/>
+      <xs:enumeration value="cdc"/>
+      <xs:enumeration value="jm"/>
+      <xs:enumeration value="jmr"/>
+      <xs:enumeration value="gci"/>
+      <xs:enumeration value="ssi"/>
+      <xs:enumeration value="pffi"/>
+      <xs:enumeration value="sse"/>
+      <xs:enumeration value="lf"/>
+      <xs:enumeration value="rigger_a"/>
+      <xs:enumeration value="rigger_a1"/>
+      <xs:enumeration value="rigger_a2"/>
+      <xs:enumeration value="rigger_b"/>
+      <xs:enumeration value="rigger_instructor"/>
+      <xs:enumeration value="rigger_examiner"/>
+      <xs:enumeration value="ejr"/>
+    </xs:restriction>
+  </xs:simpleType>
+
+  <xs:simpleType name="USPARatingCode">
+    <xs:annotation><xs:documentation>
+      USPA-issued ratings. Coach + four instructional ratings (AFFI,
+      IAD-I, S/L-I, USPA TI) + matching Examiner tiers + Course
+      Director + Instructor Examiner Course Director + the PRO
+      specialty + the S&amp;TA appointment.
+
+      Sources:
+        https://www.uspa.org/IRM
+        https://www.uspa.org/demo
+        https://www.uspa.org/locator/sta
+        https://www.uspa.org/contact-and-about-uspa/uspa-news/rating-corner-pro-rating-changes
+
+      Notes:
+        ti       — USPA Tandem Instructor recognition rating. Holding
+                   it requires a manufacturer rating in TandemSystem
+                   (UPT or Strong); USPA enforces a separate currency
+                   overlay (15 / 12 mo + 1 / 90 d + annual seminar)
+                   that v0.1 does not compute (D47, "Out of scope").
+        sta      — S&amp;TA is technically an appointment, not a
+                   rating; modeled here for storage simplicity with a
+                   user-entered expiry tied to the March 31
+                   reappointment cycle.
+        course_director — captures all CD discipline variants. The
+                   discipline (Coach CD, AFFI CD, etc.) lives in the
+                   parent record's `notes` field for v0.1; if the
+                   data outgrows free text, splitting by discipline
+                   is additive.
+
+      Master / Senior Rigger are FAA Part 65, not USPA-issued. They
+      do not appear here. A future enum scoped to FAA-issued credentials
+      can land additively if the user wants to track them.
+    </xs:documentation></xs:annotation>
+    <xs:restriction base="xs:string">
+      <xs:enumeration value="coach"/>
+      <xs:enumeration value="affi"/>
+      <xs:enumeration value="iad_i"/>
+      <xs:enumeration value="sl_i"/>
+      <xs:enumeration value="ti"/>
+      <xs:enumeration value="coach_examiner"/>
+      <xs:enumeration value="affi_examiner"/>
+      <xs:enumeration value="iad_examiner"/>
+      <xs:enumeration value="sl_examiner"/>
+      <xs:enumeration value="ti_examiner"/>
+      <xs:enumeration value="course_director"/>
+      <xs:enumeration value="iecd"/>
+      <xs:enumeration value="pro"/>
+      <xs:enumeration value="sta"/>
+    </xs:restriction>
+  </xs:simpleType>
+
+  <xs:simpleType name="TandemSystem">
+    <xs:annotation><xs:documentation>
+      Manufacturer-issued tandem instructor rating, scoped to a
+      tandem rig system. The values are SYSTEM identifiers, not
+      manufacturer names — UPT (the company) ships both Vector and
+      Sigma as separate systems with separate ratings and a separate
+      Sigma endorsement fee. The currency calculator dispatches on
+      the system value because the rule is system-specific (UPT 3/90 +
+      25/365; Strong tiered; see D47 per-system rules table).
+
+      Values:
+        upt_vector       — UPT Vector tandem system
+        upt_sigma        — UPT Sigma / Sigma II tandem system
+        strong_dual_hawk — Strong Enterprises Dual Hawk Tandem
+        other            — free-text system name in `system_other`
+
+      Sources:
+        https://uptvector.com/sigma/
+        https://uptvector.com/wp-content/uploads/2025/12/Man016-Rev0-Sigma-Tandem-Operations-Manual.pdf
+        https://uptvector.com/wp-content/uploads/2019/05/NEW-Tandem-Instructor-Re-Certification-Form-FORM-267-REV-8.pdf
+        https://strongparachutes.com/Tandem/Products/dual-hawk-tandem-dht
+        https://strongparachutes.com/Tandem/Instructors/Currency-Requirements
+
+      JumpShack (Racer tandem) is a known system not yet in the enum.
+      Adding it is additive within v1 per D18 once a user surfaces
+      the need.
+    </xs:documentation></xs:annotation>
+    <xs:restriction base="xs:string">
+      <xs:enumeration value="upt_vector"/>
+      <xs:enumeration value="upt_sigma"/>
+      <xs:enumeration value="strong_dual_hawk"/>
+      <xs:enumeration value="other"/>
+    </xs:restriction>
+  </xs:simpleType>
+
+  <xs:simpleType name="MedicalKind">
+    <xs:annotation><xs:documentation>
+      Government-issued aviation medical certificate kind. v0.1 only
+      models the class commonly required for tandem operations:
+
+        class_iii — FAA Class III (US), Transport Canada Class III
+                    (CA), or foreign equivalent. The issuing
+                    authority is captured in the parent record's
+                    `issuing_authority` free-text field; the kind
+                    enum just controls which calendar the warning
+                    UI uses.
+
+      Class I and Class II are higher-tier (commercial / ATP) medicals
+      that supersede Class III but are rarely held for sport jumping.
+      Adding them is additive if needed.
+
+      Sources (cited but not retrievable from public web during
+      research; v0.1 stores the user-entered expiry only):
+        Transport Canada CARs Part IV
+        FAA Part 67 (medical standards)
+        UPT FORM-267 — requires "current FAA Class III or foreign equivalent or HALO physical"
+        Strong — requires "valid FAA Class III, foreign equivalent, or HALO physical"
+
+      D47, Could not confirm §1: the age-banded validity cycle
+      (e.g. 5 yr under 40 / 2 yr over 40) was not retrievable from
+      public sources. The user enters the expiry from their card.
+    </xs:documentation></xs:annotation>
+    <xs:restriction base="xs:string">
+      <xs:enumeration value="class_iii"/>
+    </xs:restriction>
+  </xs:simpleType>
+
+  <!-- ================================================================
+       Complex types used from the top-level elements
+       ================================================================ -->
+
+  <xs:complexType name="AttachmentType">
+    <xs:annotation><xs:documentation>
+      One uploaded file associated with a jump (FlySight CSV, video,
+      photo) or with a jumper (credential card, medical certificate,
+      added per D47 / Phase B.2). The bytes live on disk next to the
+      parent XML; this element records metadata. Hash is duplicated in
+      SHA256SUMS — matching them is part of integrity verification.
+
+      D47: the optional `id` field lets credential records reference
+      an attachment by UUID rather than by filename. Optional and
+      placed at the end of the sequence so existing pre-D47 jump.xml
+      attachments without an id continue to validate (D18: additive
+      changes only within v1).
+    </xs:documentation></xs:annotation>
+    <xs:sequence>
+      <xs:element name="filename" type="Filename"/>
+      <xs:element name="sha256" type="SHA256Hex"/>
+      <xs:element name="size" type="xs:nonNegativeInteger"/>
+      <xs:element name="content_type" type="xs:string" minOccurs="0"/>
+      <xs:element name="id"           type="UUID"      minOccurs="0"/>
+    </xs:sequence>
+  </xs:complexType>
+
+  <xs:complexType name="NotesLogEntry">
+    <xs:annotation><xs:documentation>
+      One entry in a component's append-only notes log (D34). Shared
+      across every rig-manager component kind (main, reserve, aad,
+      container). The shape is intentionally minimal for v0.1:
+
+        at   — D17 canonical UTC ISO-8601 timestamp (xs:dateTime)
+        text — free-text content, required, capped at 2000 chars to
+               keep accidental paste-the-wrong-thing input from
+               ballooning the XML.
+
+      Optional attribution / linking-to-attachments fields can land
+      additively in a later D-entry without breaking files written
+      against this shape (D18).
+    </xs:documentation></xs:annotation>
+    <xs:sequence>
+      <xs:element name="at" type="xs:dateTime"/>
+      <xs:element name="text">
+        <xs:simpleType>
+          <xs:restriction base="xs:string">
+            <xs:minLength value="1"/>
+            <xs:maxLength value="2000"/>
+          </xs:restriction>
+        </xs:simpleType>
+      </xs:element>
+    </xs:sequence>
+  </xs:complexType>
+
+  <xs:group name="ComponentBaseFields">
+    <xs:annotation><xs:documentation>
+      Universal fields shared by every rig-manager component (D34).
+      Each top-level component element (main, reserve, aad,
+      container) opens its sequence with ``<xs:group ref=
+      "ComponentBaseFields"/>`` and then declares its kind-specific
+      fields after.
+
+      Order is locked by the XSD sequence — moving a field changes
+      the on-disk shape, so additive changes append to the per-kind
+      tail rather than reordering this group.
+    </xs:documentation></xs:annotation>
+    <xs:sequence>
+      <xs:element name="id"              type="UUID"/>
+      <xs:element name="status"          type="ComponentStatus"/>
+      <xs:element name="assigned_rig_id" type="UUID"          minOccurs="0"/>
+      <xs:element name="notes_log"                            minOccurs="0">
+        <xs:complexType>
+          <xs:sequence>
+            <xs:element name="entry" type="NotesLogEntry"
+                        minOccurs="0" maxOccurs="unbounded"/>
+          </xs:sequence>
+        </xs:complexType>
+      </xs:element>
+      <xs:element name="created_at"      type="xs:dateTime"   minOccurs="0"/>
+      <xs:element name="updated_at"      type="xs:dateTime"   minOccurs="0"/>
+    </xs:sequence>
+  </xs:group>
+
+  <xs:complexType name="RepackEntryType">
+    <xs:annotation><xs:documentation>
+      One repack event in a rig's append-only repack history (D38).
+      Records rigger administrative action only — the consequences
+      to the reserve / AAD (a ride, a fire, a battery swap) are
+      reflected on the component itself via a normal update to
+      ``*_initial`` per Alex's 2026-04-24 direction.
+
+      Fields:
+        date              — calendar date the rigger sealed the rig.
+                            Drives the rig's next-repack-due clock
+                            (D33: 180 d USPA, 270 d CSPA).
+        rigger            — free-text rigger name. v0.1 does not
+                            track rigger credentials per D33's
+                            non-decisions list.
+        jurisdiction_seal — closed enum (USPA | CSPA | both) per
+                            D38. Records which jurisdiction's seal
+                            the rigger affixed.
+        notes             — optional free-text. Used for "new cypres
+                            battery", "full inspection", etc.
+
+      The R.5 write flow appends entries to a wrapper element on the
+      rig; v0.1 onboarding accepts an initial list via RigCreate per
+      D38. Entries are append-only in the R.5 flow — corrections go
+      through a dedicated repair operation (also R.5).
+    </xs:documentation></xs:annotation>
+    <xs:sequence>
+      <xs:element name="date"              type="xs:date"/>
+      <xs:element name="rigger">
+        <xs:simpleType>
+          <xs:restriction base="xs:string">
+            <xs:minLength value="1"/>
+            <xs:maxLength value="120"/>
+          </xs:restriction>
+        </xs:simpleType>
+      </xs:element>
+      <xs:element name="jurisdiction_seal" type="Jurisdiction"/>
+      <xs:element name="notes"             type="xs:string" minOccurs="0"/>
+    </xs:sequence>
+  </xs:complexType>
+
+  <!-- ================================================================
+       D47 — Credential complex types
+
+       Five complex types representing the credentials a jumper
+       holds. Each is consumed by one sibling collection on the
+       jumper element (per B.3, the next slice): MembershipType in
+       the memberships collection, CopType in cops, etc.
+
+       Cross-field consistency between `org` and the per-org `level`
+       / `code` field is enforced at the Pydantic / service layer.
+       XSD 1.0 has no xs:assert, so the schema accepts any of the
+       org's tokens (or free text when org=OTHER) and the strict
+       check lives in code. This is the same posture the existing
+       AttachmentType / Filename split uses — XSD validates broad
+       shape, Pydantic validates the full rule.
+
+       Phase B.2 (2026-04-29) lands the types and their validation
+       fixtures; the JumperContent extension that uses them lands
+       in B.3.
+       ================================================================ -->
+
+  <xs:complexType name="MembershipType">
+    <xs:annotation><xs:documentation>
+      A federation membership card (CSPA, USPA, or other). The
+      card's expiry date drives the 30-day-out warning surfaced in
+      Profile.jsx (Phase F). When `org` is `OTHER`, `org_other`
+      carries the federation name as free text.
+
+      Cross-field rule (Pydantic): when `org=CSPA` or `org=USPA`,
+      `org_other` must be absent. When `org=OTHER`, `org_other`
+      must be present.
+
+      `member_number` capped at 40 chars — fits CSPA / USPA member
+      number formats and any plausible foreign-federation form.
+    </xs:documentation></xs:annotation>
+    <xs:sequence>
+      <xs:element name="id"                 type="UUID"/>
+      <xs:element name="org"                type="OrgEnum"/>
+      <xs:element name="org_other"          minOccurs="0">
+        <xs:simpleType>
+          <xs:restriction base="xs:string">
+            <xs:minLength value="1"/>
+            <xs:maxLength value="120"/>
+          </xs:restriction>
+        </xs:simpleType>
+      </xs:element>
+      <xs:element name="member_number">
+        <xs:simpleType>
+          <xs:restriction base="xs:string">
+            <xs:minLength value="1"/>
+            <xs:maxLength value="40"/>
+          </xs:restriction>
+        </xs:simpleType>
+      </xs:element>
+      <xs:element name="expiry_date"        type="xs:date"/>
+      <xs:element name="card_attachment_id" type="UUID"      minOccurs="0"/>
+      <xs:element name="notes"              type="xs:string" minOccurs="0"/>
+    </xs:sequence>
+  </xs:complexType>
+
+  <xs:complexType name="CopType">
+    <xs:annotation><xs:documentation>
+      A federation Certificate of Proficiency (CSPA's term) or
+      license (USPA's term). CoPs do not expire by date — they
+      become null and void when currency lapses (USPA SIM 3-1, CSPA
+      MOI). v0.1 records `issued_date` only; the calculator that
+      decides "is your CoP current right now" is a future slice.
+
+      `level` is xs:string at the XSD level. Pydantic enforces the
+      per-org closed enum: org=CSPA accepts CSPACopLevel values
+      (solo / a / b / c / d), org=USPA accepts USPACopLevel
+      (a / b / c / d), org=OTHER accepts free text up to 40 chars.
+
+      Cap at 40 chars on the free-text path matches the
+      MembershipType.member_number cap — both are short identifiers.
+    </xs:documentation></xs:annotation>
+    <xs:sequence>
+      <xs:element name="id"                 type="UUID"/>
+      <xs:element name="org"                type="OrgEnum"/>
+      <xs:element name="org_other"          minOccurs="0">
+        <xs:simpleType>
+          <xs:restriction base="xs:string">
+            <xs:minLength value="1"/>
+            <xs:maxLength value="120"/>
+          </xs:restriction>
+        </xs:simpleType>
+      </xs:element>
+      <xs:element name="level">
+        <xs:simpleType>
+          <xs:restriction base="xs:string">
+            <xs:minLength value="1"/>
+            <xs:maxLength value="40"/>
+          </xs:restriction>
+        </xs:simpleType>
+      </xs:element>
+      <xs:element name="issued_date"        type="xs:date"/>
+      <xs:element name="card_attachment_id" type="UUID"      minOccurs="0"/>
+      <xs:element name="notes"              type="xs:string" minOccurs="0"/>
+    </xs:sequence>
+  </xs:complexType>
+
+  <xs:complexType name="FederationRatingType">
+    <xs:annotation><xs:documentation>
+      A federation-issued rating. Coach / instructor / examiner /
+      rigger / specialty ratings live here. Tandem ratings do not —
+      they are manufacturer-issued and live in TandemRatingType
+      (per D47, the architectural correction of 2026-04-29:
+      tandem credentials are scoped to the rig system, not the
+      federation).
+
+      `code` is xs:string at the XSD level; Pydantic enforces the
+      per-org closed enum (CSPARatingCode / USPARatingCode) plus a
+      free-text fallback when org=OTHER.
+
+      Most ratings renew annually; a few (Learning Facilitator,
+      Course Director) renew on different cycles. The user enters
+      the expiry from their card; v0.1 does not compute the federation
+      currency rule from jump activity.
+    </xs:documentation></xs:annotation>
+    <xs:sequence>
+      <xs:element name="id"                 type="UUID"/>
+      <xs:element name="org"                type="OrgEnum"/>
+      <xs:element name="org_other"          minOccurs="0">
+        <xs:simpleType>
+          <xs:restriction base="xs:string">
+            <xs:minLength value="1"/>
+            <xs:maxLength value="120"/>
+          </xs:restriction>
+        </xs:simpleType>
+      </xs:element>
+      <xs:element name="code">
+        <xs:simpleType>
+          <xs:restriction base="xs:string">
+            <xs:minLength value="1"/>
+            <xs:maxLength value="40"/>
+          </xs:restriction>
+        </xs:simpleType>
+      </xs:element>
+      <xs:element name="expiry_date"        type="xs:date"/>
+      <xs:element name="card_attachment_id" type="UUID"      minOccurs="0"/>
+      <xs:element name="notes"              type="xs:string" minOccurs="0"/>
+    </xs:sequence>
+  </xs:complexType>
+
+  <xs:complexType name="TandemRatingType">
+    <xs:annotation><xs:documentation>
+      A manufacturer-issued tandem instructor rating, scoped to a
+      specific rig system (UPT Vector, UPT Sigma, Strong Dual Hawk,
+      or other).
+
+      `currency_reset_at` is the manual override: when the user
+      "declares recertified" after a supervised re-currency jump,
+      the calculator suppresses the not-current warning if the reset
+      date is within the system's currency window (UPT 90 d, Strong
+      12 mo). The reset is the only piece of currency state stored
+      in XML — everything else (counts in last 90 d / 365 d) is
+      derived from the jump index per D3.
+
+      The TandemSystem enum is closed (D47); when system=OTHER the
+      `system_other` field carries the free-text system name.
+
+      Why no medical reference here: a jumper holds one Class III
+      medical at a time and it covers operations across all their
+      tandem systems. Modeled as a separate MedicalType in its own
+      collection (D47).
+    </xs:documentation></xs:annotation>
+    <xs:sequence>
+      <xs:element name="id"                 type="UUID"/>
+      <xs:element name="system"             type="TandemSystem"/>
+      <xs:element name="system_other"       minOccurs="0">
+        <xs:simpleType>
+          <xs:restriction base="xs:string">
+            <xs:minLength value="1"/>
+            <xs:maxLength value="120"/>
+          </xs:restriction>
+        </xs:simpleType>
+      </xs:element>
+      <xs:element name="expiry_date"        type="xs:date"/>
+      <xs:element name="card_attachment_id" type="UUID"      minOccurs="0"/>
+      <xs:element name="currency_reset_at"  type="xs:date"   minOccurs="0"/>
+      <xs:element name="notes"              type="xs:string" minOccurs="0"/>
+    </xs:sequence>
+  </xs:complexType>
+
+  <xs:complexType name="MedicalType">
+    <xs:annotation><xs:documentation>
+      A government-issued aviation medical certificate. v0.1 only
+      models class_iii; higher classes (I / II) are additive when
+      a user surfaces the need.
+
+      `issuing_authority` is free text — the user types the agency
+      name from the certificate ("Transport Canada", "FAA",
+      "Civil Aviation Authority of New Zealand", "HALO physical
+      examiner", etc.). The kind enum just controls which warning
+      copy the UI surfaces; the calendar comes from `expiry_date`.
+
+      Per UPT FORM-267 and Strong's currency requirements, tandem
+      instructors must hold a current Class III (or foreign
+      equivalent / HALO physical) at the time of jumping. The
+      logbook records the expiry; the warning surfaces in Profile
+      when within 30 days of expiry or already expired. v0.1 does
+      not compute the age-banded validity cycle (D47, "Could not
+      confirm" §1).
+    </xs:documentation></xs:annotation>
+    <xs:sequence>
+      <xs:element name="id"                 type="UUID"/>
+      <xs:element name="kind"               type="MedicalKind"/>
+      <xs:element name="issuing_authority">
+        <xs:simpleType>
+          <xs:restriction base="xs:string">
+            <xs:minLength value="1"/>
+            <xs:maxLength value="120"/>
+          </xs:restriction>
+        </xs:simpleType>
+      </xs:element>
+      <xs:element name="expiry_date"        type="xs:date"/>
+      <xs:element name="card_attachment_id" type="UUID"      minOccurs="0"/>
+      <xs:element name="notes"              type="xs:string" minOccurs="0"/>
+    </xs:sequence>
+  </xs:complexType>
+
+  <!-- ================================================================
+       Top-level: <jump>
+       ================================================================ -->
+
+  <xs:element name="jump">
+    <xs:complexType>
+      <xs:sequence>
+        <xs:element name="id"          type="UUID"/>
+        <xs:element name="jump_number" type="xs:positiveInteger"/>
+        <xs:element name="title"       type="JumpTitle"       minOccurs="0"/>
+        <xs:element name="date"        type="xs:date"/>
+        <xs:element name="time"        type="TimeOfDay"      minOccurs="0"/>
+        <xs:element name="timezone"    type="IANATimezone"    minOccurs="0"/>
+        <xs:element name="dropzone"    type="xs:string"/>
+        <!-- D44: optional UUID reference to a top-level <dropzone>
+             record under logbook_root/dropzones/<uuid>.xml. When
+             present, the wear math (D45) uses that DZ's <environment>
+             as the per-jump environment fallback. Absent on jumps
+             logged before R.D.0 — those fall back further (D45
+             resolution order). -->
+        <xs:element name="dropzone_id" type="UUID"            minOccurs="0"/>
+        <!-- D33 (R.2.2-light): optional UUID reference to a top-level
+             rig record under logbook_root/rigs/<nickname>/rig.xml.
+             When present, links the jump to the assembly that was on
+             the jumper's back. Absent for legacy jumps (pre-R.2.2)
+             and for users who don't track rigs in this logbook. The
+             frozen-snapshot machinery (D36, R.2.3) wraps this with a
+             rig-snapshot.xml in the jump folder; for the interim
+             slice the rig_id alone lets the UI display the main
+             flown at log time by resolving against current rig
+             state. -->
+        <xs:element name="rig_id"      type="UUID"            minOccurs="0"/>
+        <!-- D45 / D57: the per-jump <environment> override that used
+             to live here was removed by D57 alongside the Phase 1
+             LogJumpModal redesign. The wear-math resolution order
+             now reads from the linked dropzone's <environment>
+             (D44) and the main canopy's <default_environment> only.
+             The shared EnvironmentKind simpleType stays — <dropzone>
+             still uses it. -->
+        <!-- D45: Peelman's second modifier. True when the canopy was
+             packed in dusty / sandy / salty conditions (windy DZ day,
+             beach demo, packjob on a dusty mat) regardless of where
+             the jump itself happened. Adds +0.20 lb of lineset wear
+             on top of any environment-derived delta — the two are
+             conceptually different wear sources and stack. Optional
+             with default semantics of false; absent ≡ false in the
+             wear math. -->
+        <xs:element name="packed_in_poor_conditions"
+                                       type="xs:boolean"      minOccurs="0"/>
+        <xs:element name="aircraft"    type="xs:string"       minOccurs="0"/>
+        <xs:element name="discipline"  type="xs:string"       minOccurs="0"/>
+        <!-- D47 / B.3: marks this jump as one the jumper performed
+             as the Tandem Instructor. The currency calculator
+             (Phase E) counts is_tandem=true jumps in the
+             manufacturer's window (UPT 90 d / 365 d, Strong tiered).
+             Absent ≡ false in the calculator and on disk; the
+             absent-equals-false convention matches
+             packed_in_poor_conditions above. v0.1 does not split
+             the count by tandem system (a TI rated on both Vector
+             and Sigma flies tandems on whichever rig is on their
+             back that day; jump.xml does not carry the rig-system
+             identity). If a future requirement needs per-system
+             counts, an additional optional field can land additively
+             without breaking existing data. -->
+        <xs:element name="is_tandem"   type="xs:boolean"      minOccurs="0"/>
+        <!-- Altitudes are xs:decimal (meters) with a non-negative
+             constraint, NOT xs:nonNegativeInteger. The fractional
+             precision matters for unit conversion: a typed value
+             of 13500 ft is exactly 4114.8 m. Storing 4115 m
+             (integer rounded) loses 0.2 m and round-trips back to
+             13501 ft instead of 13500. xs:decimal preserves the
+             exact ft → m → ft round-trip while still validating
+             pre-existing integer values (4000, 900) cleanly
+             because integer is a subset of decimal. -->
+        <xs:element name="exit_altitude_m">
+          <xs:simpleType>
+            <xs:restriction base="xs:decimal">
+              <xs:minInclusive value="0"/>
+            </xs:restriction>
+          </xs:simpleType>
+        </xs:element>
+        <xs:element name="deployment_altitude_m">
+          <xs:simpleType>
+            <xs:restriction base="xs:decimal">
+              <xs:minInclusive value="0"/>
+            </xs:restriction>
+          </xs:simpleType>
+        </xs:element>
+        <xs:element name="freefall_time_s"       type="xs:nonNegativeInteger" minOccurs="0"/>
+        <xs:element name="notes"      type="xs:string"         minOccurs="0"/>
+        <xs:element name="attachments" minOccurs="0">
+          <xs:complexType>
+            <xs:sequence>
+              <xs:element name="attachment" type="AttachmentType"
+                          minOccurs="0" maxOccurs="unbounded"/>
+            </xs:sequence>
+          </xs:complexType>
+        </xs:element>
+        <!-- D53 additive block (additive within v1 per D18). All six
+             elements are optional; pre-D53 jump.xml files validate
+             unchanged. See DECISIONS.md §D53 for rationale. -->
+        <!-- D53: jump_types is multi-valued (a camera flyer on an
+             angle is one jump with two facets). The wrapper elides
+             when the list is empty so a hand-crafted jump.xml without
+             it round-trips byte-stable. Tandem stays on <is_tandem>
+             (D47, Phase B.4) — not in this enum. -->
+        <xs:element name="jump_types" minOccurs="0">
+          <xs:complexType>
+            <xs:sequence>
+              <xs:element name="jump_type" type="JumpTypeKind"
+                          minOccurs="0" maxOccurs="unbounded"/>
+            </xs:sequence>
+          </xs:complexType>
+        </xs:element>
+        <!-- D53 / D57: landing accuracy. Magnitude only
+             (xs:decimal ≥ 0, meters per D12). The directional half
+             (LandingDirection enum) was removed by D57 — the redesign
+             captures landing accuracy as a single magnitude.
+             On-target landings leave this element absent. -->
+        <xs:element name="landing_distance_m" minOccurs="0">
+          <xs:simpleType>
+            <xs:restriction base="xs:decimal">
+              <xs:minInclusive value="0"/>
+            </xs:restriction>
+          </xs:simpleType>
+        </xs:element>
+        <!-- D53: packer reference. Absent ≡ self-packed; the logbook
+             owner is never a Person record (D54). UUID points at a
+             <person> record under logbook_root/people/<uuid>/.
+             Stale references (deleted person) render soft-warned per
+             D54 — not a validation error. -->
+        <xs:element name="packed_by" type="UUID" minOccurs="0"/>
+        <!-- D53 / D57: group facts. ``group_size`` (xs:positiveInteger)
+             was removed by D57 — the headline jumper count is implied
+             by ``group_members`` and a redundant scalar invites
+             contradiction. ``group_members`` is the named subset
+             (UUID refs to <person>). -->
+        <xs:element name="group_members" minOccurs="0">
+          <xs:complexType>
+            <xs:sequence>
+              <xs:element name="member" type="UUID"
+                          minOccurs="0" maxOccurs="unbounded"/>
+            </xs:sequence>
+          </xs:complexType>
+        </xs:element>
+        <!-- Reserved per D6. Unused in v1 code; do not read or write. -->
+        <xs:element name="signature" type="xs:string" minOccurs="0"/>
+        <!-- D32: audit timestamps in D17 UTC canonical form
+             (YYYY-MM-DDThh:mm:ss.sssZ). Optional in the XSD so a
+             third-party-authored jump or a pre-D32 file still
+             validates; reindex falls back to file mtime with a
+             warning when absent. ``xs:dateTime`` permits a trailing
+             ``Z`` (UTC) and that's the only form the app writes;
+             other timezone offsets are accepted by the XSD but not
+             produced by us. -->
+        <xs:element name="created_at" type="xs:dateTime" minOccurs="0"/>
+        <xs:element name="updated_at" type="xs:dateTime" minOccurs="0"/>
+        <!-- Q4: write-time provenance ("skydive-logbook/0.1.0") so
+             files carry their origin for bug reports. Never read by
+             the app; ignored on load. Changing the app version never
+             changes the schema version — this element is free text. -->
+        <xs:element name="generator" type="xs:string" minOccurs="0"/>
+      </xs:sequence>
+    </xs:complexType>
+  </xs:element>
+
+  <!-- ================================================================
+       Top-level: <dropzone>  (D44)
+       ================================================================
+       One file per dropzone record under logbook_root/dropzones/<uuid>.xml.
+       Identifies a place where the jumper jumps (name + city +
+       province? + country) and carries the <environment> field that
+       feeds line-wear math (D45). Jumps reference these via
+       <jump>/<dropzone_id>.
+
+       Note that the local element <jump>/<dropzone> (free-text name,
+       string) coexists with this top-level <dropzone> (the entity).
+       XSD scope rules permit the duplicate name; the local field
+       stays as a freeform label so a quick log without a DZ entity
+       selected still carries something human-readable.
+       ================================================================ -->
+
+  <xs:element name="dropzone">
+    <xs:complexType>
+      <xs:sequence>
+        <xs:element name="id"          type="UUID"/>
+        <xs:element name="name">
+          <!-- Required, free text. Min 1 / max 120 same as JumpTitle so
+               folder-listing UIs lay out predictably. -->
+          <xs:simpleType>
+            <xs:restriction base="xs:string">
+              <xs:minLength value="1"/>
+              <xs:maxLength value="120"/>
+            </xs:restriction>
+          </xs:simpleType>
+        </xs:element>
+        <xs:element name="city">
+          <!-- Required, free text. Disambiguates same-named DZs across
+               regions ("Skydive City — Florida" vs "Skydive City —
+               anywhere else"). -->
+          <xs:simpleType>
+            <xs:restriction base="xs:string">
+              <xs:minLength value="1"/>
+              <xs:maxLength value="120"/>
+            </xs:restriction>
+          </xs:simpleType>
+        </xs:element>
+        <xs:element name="province"    type="xs:string"       minOccurs="0"/>
+        <xs:element name="country"     type="CountryCode"/>
+        <xs:element name="environment" type="EnvironmentKind"/>
+        <!-- D44 (added 2026-04-28): optional fleet of aircraft known
+             to fly at this DZ. 0..n <plane> entries, each with a
+             required <model> string + optional <tail_number>.
+             Listed in the full record only — not surfaced in
+             DropzoneSummary. The element is omitted entirely when
+             the DZ has no planes recorded. -->
+        <xs:element name="aircraft"    minOccurs="0">
+          <xs:complexType>
+            <xs:sequence>
+              <xs:element name="plane" minOccurs="0" maxOccurs="unbounded">
+                <xs:complexType>
+                  <xs:sequence>
+                    <xs:element name="model">
+                      <xs:simpleType>
+                        <xs:restriction base="xs:string">
+                          <xs:minLength value="1"/>
+                          <xs:maxLength value="120"/>
+                        </xs:restriction>
+                      </xs:simpleType>
+                    </xs:element>
+                    <xs:element name="tail_number" minOccurs="0">
+                      <!-- Free text — registries vary by country
+                           (N123AB / C-FXYZ / G-ABCD / D-ABCD). Cap
+                           at 32 chars to bound the input without
+                           rejecting legitimate combinations. -->
+                      <xs:simpleType>
+                        <xs:restriction base="xs:string">
+                          <xs:minLength value="1"/>
+                          <xs:maxLength value="32"/>
+                        </xs:restriction>
+                      </xs:simpleType>
+                    </xs:element>
+                  </xs:sequence>
+                </xs:complexType>
+              </xs:element>
+            </xs:sequence>
+          </xs:complexType>
+        </xs:element>
+        <xs:element name="notes"       type="xs:string"       minOccurs="0"/>
+        <!-- D60: starred = "default dropzone for the jump-log form".
+             Optional, elided when false so unstarred DZs serialise
+             without it (byte-stable round-trip for pre-D60 files).
+             The service layer maintains the "≥1 DZ ⇒ exactly one
+             starred" invariant via auto-star-on-create,
+             clear-then-stamp in set_star, and successor election
+             on delete-of-starred. Mirrors RigType's <starred>. -->
+        <xs:element name="starred"     type="xs:boolean"      minOccurs="0"/>
+        <!-- D32 audit timestamps in canonical UTC ms form. Authored
+             by the service layer. Optional in the XSD so a hand-
+             crafted dropzone XML still validates. -->
+        <xs:element name="created_at"  type="xs:dateTime"     minOccurs="0"/>
+        <xs:element name="updated_at"  type="xs:dateTime"     minOccurs="0"/>
+        <!-- Q4 write-time provenance, same posture as <jump>. -->
+        <xs:element name="generator"   type="xs:string"       minOccurs="0"/>
+      </xs:sequence>
+    </xs:complexType>
+  </xs:element>
+
+  <!-- ================================================================
+       Top-level: <person>  (D54)
+       ================================================================
+       One file per person record under
+       logbook_root/people/<uuid>.xml. People are jumpers the
+       owner has flown with (referenced from <jump>/<group_members>)
+       and packers who have packed for them (referenced from
+       <jump>/<packed_by>). The same Person record can be referenced
+       from both contexts; no role tag distinguishes friend from
+       packer (D54 §Why).
+
+       The shape is deliberately minimal: id, name, optional notes,
+       audit footer. Names are NFC-normalized at the storage layer
+       (D4) on every write. The logbook owner is NOT a Person —
+       <packed_by> absent on a jump is the canonical "self-packed"
+       signal (D53 §Decision).
+
+       Resolution is soft at the service layer: jump-side references
+       that don't resolve to a Person record render as "Unknown
+       person <short-uuid>" rather than raising. Hand-edited or
+       half-imported logbooks stay loadable; integrity is a UI
+       concern, not a data invariant.
+       ================================================================ -->
+
+  <xs:element name="person">
+    <xs:complexType>
+      <xs:sequence>
+        <xs:element name="id"          type="UUID"/>
+        <xs:element name="name">
+          <!-- Required, free text. Min 1 / max 120 mirrors JumpTitle
+               and Dropzone.name so listing UIs lay out predictably. -->
+          <xs:simpleType>
+            <xs:restriction base="xs:string">
+              <xs:minLength value="1"/>
+              <xs:maxLength value="120"/>
+            </xs:restriction>
+          </xs:simpleType>
+        </xs:element>
+        <xs:element name="notes"       type="xs:string"       minOccurs="0"/>
+        <!-- D32 audit timestamps in canonical UTC ms form. Authored
+             by the service layer. Optional so a hand-crafted file
+             still validates. -->
+        <xs:element name="created_at"  type="xs:dateTime"     minOccurs="0"/>
+        <xs:element name="updated_at"  type="xs:dateTime"     minOccurs="0"/>
+        <!-- Q4 write-time provenance, same posture as <jump>. -->
+        <xs:element name="generator"   type="xs:string"       minOccurs="0"/>
+      </xs:sequence>
+    </xs:complexType>
+  </xs:element>
+
+  <!-- ================================================================
+       Top-level: <container>  (D33, D34, R.0.2b)
+       ================================================================
+       One file per container record under
+       ``logbook_root/inventory/containers/<uuid>.xml``. Container is
+       the simplest of the four rig-manager components: identification
+       (manufacturer / model / serial / size), a date of manufacture,
+       and a single jump counter.
+
+       Field set per D34: "Container has size, DOM, jump counter."
+       Manufacturer / model / serial sit alongside size as the basic
+       identification triple — they are universal across mains,
+       reserves, and containers (AAD uses ``brand`` instead of
+       ``manufacturer`` per D34, so they are NOT on the shared base).
+       ``size`` is a free-text string here ("M22", "Large") rather
+       than a numeric area like main / reserve.
+
+       D35: ``jump_count_initial`` is the editable seed value. The
+       derived projection lives in the SQLite index and is rebuilt
+       from rig-snapshot.xml entries on reindex (R.3+).
+       ================================================================ -->
+
+  <xs:complexType name="ContainerContent">
+    <xs:annotation><xs:documentation>
+      Reusable shape for a container — used by the top-level
+      ``container`` element AND by ``rig_snapshot/container``
+      (R.2.1, D36 denormalized snapshot). Same field set in both
+      contexts; the snapshot is a frozen copy.
+    </xs:documentation></xs:annotation>
+    <xs:sequence>
+      <xs:group ref="ComponentBaseFields"/>
+      <xs:element name="manufacturer" type="xs:string" minOccurs="0"/>
+      <xs:element name="model"        type="xs:string" minOccurs="0"/>
+      <xs:element name="serial"       type="xs:string" minOccurs="0"/>
+      <xs:element name="size"         type="xs:string" minOccurs="0"/>
+      <xs:element name="date_of_manufacture" type="xs:date" minOccurs="0"/>
+      <!-- D35: editable seed for the jump counter. Defaults to 0
+           on a freshly-onboarded container; used-gear setup writes
+           a non-zero value matching the hand-counted history. -->
+      <xs:element name="jump_count_initial" type="xs:nonNegativeInteger"/>
+      <!-- Q4 write-time provenance, same posture as <jump>. -->
+      <xs:element name="generator" type="xs:string" minOccurs="0"/>
+    </xs:sequence>
+  </xs:complexType>
+
+  <xs:element name="container" type="ContainerContent"/>
+
+  <!-- ================================================================
+       Top-level: <aad>  (D33, D34, R.0.2c)
+       ================================================================
+       One file per AAD record under
+       ``logbook_root/inventory/aads/<uuid>.xml``.
+
+       Field set per D34 (amended 2026-04-28 — ``manufacturer`` not
+       ``brand``):
+
+         manufacturer        — Cypres / Vigil / MarS / etc. Free text;
+                               D39's airworthiness rules key on this
+                               value plus model + DOM tier.
+         model               — e.g. "Cypres 2", "Vigil II", "m2".
+         serial              — manufacturer-issued unit serial.
+         date_of_manufacture — DOM. Required by D39's tier lookup
+                               (Cypres 2 pre-2016 / 2016 / 2017+).
+         mode                — current mode setting, free text.
+                               Per-manufacturer mode names (Pro,
+                               Expert, Tandem, Student, ...) are
+                               resolved in D39's rule code.
+         is_changeable_mode  — bool. Some early units lock the mode
+                               at the factory.
+         jump_count_initial  — D35 seed for the jump counter.
+         fire_count_initial  — D35 seed for the fire counter; the
+                               derived value stays at zero in v0.1
+                               (entered manually only) per D35.
+
+       D39's service-window and EOL outputs are derived in code from
+       these facts; nothing about the service calendar is stored on
+       the AAD itself.
+       ================================================================ -->
+
+  <xs:complexType name="AADContent">
+    <xs:annotation><xs:documentation>
+      Reusable AAD shape — used by the top-level ``aad`` element
+      AND by ``rig_snapshot/aad`` (R.2.1, D36).
+    </xs:documentation></xs:annotation>
+    <xs:sequence>
+      <xs:group ref="ComponentBaseFields"/>
+      <xs:element name="manufacturer"        type="xs:string" minOccurs="0"/>
+      <xs:element name="model"               type="xs:string" minOccurs="0"/>
+      <xs:element name="serial"              type="xs:string" minOccurs="0"/>
+      <xs:element name="date_of_manufacture" type="xs:date"   minOccurs="0"/>
+      <xs:element name="mode"                type="xs:string" minOccurs="0"/>
+      <xs:element name="is_changeable_mode"  type="xs:boolean" minOccurs="0"/>
+      <xs:element name="jump_count_initial"  type="xs:nonNegativeInteger"/>
+      <xs:element name="fire_count_initial"  type="xs:nonNegativeInteger"/>
+      <xs:element name="generator"           type="xs:string" minOccurs="0"/>
+    </xs:sequence>
+  </xs:complexType>
+
+  <xs:element name="aad" type="AADContent"/>
+
+  <!-- ================================================================
+       Top-level: <reserve>  (D33, D34, R.0.2d)
+       ================================================================
+       One file per reserve canopy under
+       ``logbook_root/inventory/reserves/<uuid>.xml``.
+
+       Field set per D34:
+         * Universal: id / status / assigned_rig_id / notes_log /
+           timestamps (the ComponentBaseFields group).
+         * Identification: manufacturer / model / serial.
+         * Geometry: size_sqft (canopy area in square feet).
+         * Provenance: date_of_manufacture.
+         * Manufacturer specs: repack_limit (max repacks before
+           manufacturer-required inspection) and ride_limit (max
+           rides before manufacturer-required inspection). Both
+           optional — None means "no limit recorded."
+         * D35 wear counters: repack_count_initial /
+           ride_count_initial. Reserve deliberately has NO
+           jump_count (D35 §2553 — reserves are packed, not
+           jumped).
+         * Recert extensions: structured event log for "sent to
+           manufacturer for re-certification" events. Empty list
+           when not used.
+
+       Reserve does NOT carry the regulatory repack window (180 /
+       270 day calendar) — that lives on the rig per D33's
+       jurisdiction-driven repack clock. The fields here are
+       manufacturer-specific only.
+       ================================================================ -->
+
+  <xs:complexType name="ReserveRecertExtension">
+    <xs:annotation><xs:documentation>
+      One re-certification extension granted by a rigger or by the
+      manufacturer (D34). Minimal v0.1 shape — additive later if
+      attribution / linked-document fields become needed.
+
+        granted_at     — D17 canonical UTC ISO-8601 timestamp.
+        extends_until  — calendar date the extension is valid through.
+        granted_by     — free-text rigger / manufacturer name.
+                         Optional because legacy paper records may not
+                         have the name preserved.
+        reason         — free-text justification. Optional.
+    </xs:documentation></xs:annotation>
+    <xs:sequence>
+      <xs:element name="granted_at"    type="xs:dateTime"/>
+      <xs:element name="extends_until" type="xs:date"/>
+      <xs:element name="granted_by"    type="xs:string" minOccurs="0"/>
+      <xs:element name="reason"        type="xs:string" minOccurs="0"/>
+    </xs:sequence>
+  </xs:complexType>
+
+  <xs:complexType name="LinesetType">
+    <xs:annotation><xs:documentation>
+      Shared shape for the main's nested current_lineset and each
+      lineset_history/lineset entry (D34, superseded for the seed
+      and exit-weight fields by D46).
+
+      Fields:
+        id                       — stable UUID for the lineset; jumps
+                                   pin to this id via rig-snapshot.xml
+                                   (R.2+) so reline doesn't mutate
+                                   the wear math of historical jumps.
+        line_type                — free text. Frontend composes the
+                                   string as material+variant
+                                   (Vectran V750, HMA 825, ...) but
+                                   the XSD keeps it open so future
+                                   line types land without a schema
+                                   change.
+        breaking_strength_lb     — manufacturer's spec. D45's
+                                   starting budget is computed as
+                                   breaking_strength_lb minus the
+                                   active jumper's exit_weight_lb
+                                   live (D46) — exit weight is no
+                                   longer snapshotted here.
+        install_date             — when this lineset went on the
+                                   main.
+        installed_by             — free text rigger name. Optional.
+        jumps_on_lineset_initial — D46 wear-counter seed (was
+                                   consumed_lb_initial: xs:decimal
+                                   per D34/D35; superseded). A count
+                                   of pre-logbook jumps on this
+                                   lineset; D45 treats each as a
+                                   baseline 1.0 lb of consumed
+                                   budget. New install: 0.
+    </xs:documentation></xs:annotation>
+    <xs:sequence>
+      <xs:element name="id"                       type="UUID"/>
+      <xs:element name="line_type"                type="xs:string"/>
+      <xs:element name="breaking_strength_lb"     type="xs:decimal"/>
+      <xs:element name="install_date"             type="xs:date"/>
+      <xs:element name="installed_by"             type="xs:string" minOccurs="0"/>
+      <xs:element name="jumps_on_lineset_initial" type="xs:nonNegativeInteger"/>
+    </xs:sequence>
+  </xs:complexType>
+
+  <!-- ================================================================
+       Top-level: <main>  (D33, D34, R.0.2e)
+       ================================================================
+       One file per main canopy under
+       ``logbook_root/inventory/mains/<uuid>.xml``.
+
+       Per D34 the main carries:
+         * Universal: id / status / assigned_rig_id / notes_log /
+           timestamps (the ComponentBaseFields group).
+         * Identification: manufacturer / model / serial.
+         * Geometry: size_sqft.
+         * Provenance: date_of_manufacture.
+         * D45 / D57: default_environment — single Environment value
+           used as the second fallback in the wear-math chain
+           (dropzone.environment → main.default_environment →
+           clean_grass). D57 collapsed the three-step resolution
+           order to two by removing the per-jump environment
+           override. Renamed from D33's original
+           "default_environment_flags" wording on 2026-04-28
+           (R.0.2e); the value is a single closed-enum value, not a
+           bit set, so the "flags" suffix was misleading.
+         * D35 wear counter seed: jump_count_initial.
+         * Nested lineset state: a single optional
+           <current_lineset> (the lineset in service today) plus a
+           <lineset_history> wrapper holding any archived prior
+           linesets. The wrapper elides when the history is empty.
+
+       <current_lineset> being absent means "not yet lined" — a
+       freshly-bought new main with the manufacturer's stock lines
+       still on it that the rigger hasn't relined since purchase.
+       ================================================================ -->
+
+  <xs:complexType name="MainContent">
+    <xs:annotation><xs:documentation>
+      Reusable main-canopy shape — used by the top-level ``main``
+      element AND by ``rig_snapshot/main`` (R.2.1, D36). The
+      snapshot writer leaves ``lineset_history`` empty per D36
+      ("only the lineset actually in use on this jump"); the XSD
+      tolerates either shape so the per-context invariant lives in
+      the writer rather than in the XSD.
+    </xs:documentation></xs:annotation>
+    <xs:sequence>
+      <xs:group ref="ComponentBaseFields"/>
+      <xs:element name="manufacturer"         type="xs:string"        minOccurs="0"/>
+      <xs:element name="model"                type="xs:string"        minOccurs="0"/>
+      <xs:element name="serial"               type="xs:string"        minOccurs="0"/>
+      <xs:element name="size_sqft"            type="xs:decimal"       minOccurs="0"/>
+      <xs:element name="date_of_manufacture"  type="xs:date"          minOccurs="0"/>
+      <xs:element name="default_environment"
+                  type="EnvironmentKind"      minOccurs="0"/>
+      <!-- D45: RDS (Removable Deployment System) flag. When true,
+           the wear-math budget per D45 adds a flat +0.15 lb to every
+           jump on this main's lineset. Stored on the main rather
+           than per-jump because RDS is a physical property of the
+           canopy/rig assembly (not a per-jump decision). Optional,
+           elided when false so pre-D45-reification main.xml stays
+           byte-stable. -->
+      <xs:element name="has_rds"              type="xs:boolean"       minOccurs="0"/>
+      <xs:element name="jump_count_initial"   type="xs:nonNegativeInteger"/>
+      <xs:element name="current_lineset"      type="LinesetType"      minOccurs="0"/>
+      <xs:element name="lineset_history" minOccurs="0">
+        <xs:complexType>
+          <xs:sequence>
+            <xs:element name="lineset" type="LinesetType"
+                        minOccurs="0" maxOccurs="unbounded"/>
+          </xs:sequence>
+        </xs:complexType>
+      </xs:element>
+      <xs:element name="generator"            type="xs:string"        minOccurs="0"/>
+    </xs:sequence>
+  </xs:complexType>
+
+  <xs:element name="main" type="MainContent"/>
+
+  <xs:complexType name="ReserveContent">
+    <xs:annotation><xs:documentation>
+      Reusable reserve shape — used by the top-level ``reserve``
+      element AND by ``rig_snapshot/reserve`` (R.2.1, D36).
+    </xs:documentation></xs:annotation>
+    <xs:sequence>
+      <xs:group ref="ComponentBaseFields"/>
+      <xs:element name="manufacturer"         type="xs:string" minOccurs="0"/>
+      <xs:element name="model"                type="xs:string" minOccurs="0"/>
+      <xs:element name="serial"               type="xs:string" minOccurs="0"/>
+      <xs:element name="size_sqft"            type="xs:decimal" minOccurs="0"/>
+      <xs:element name="date_of_manufacture"  type="xs:date"   minOccurs="0"/>
+      <xs:element name="repack_limit"         type="xs:nonNegativeInteger" minOccurs="0"/>
+      <xs:element name="ride_limit"           type="xs:nonNegativeInteger" minOccurs="0"/>
+      <xs:element name="repack_count_initial" type="xs:nonNegativeInteger"/>
+      <xs:element name="ride_count_initial"   type="xs:nonNegativeInteger"/>
+      <xs:element name="recert_extensions" minOccurs="0">
+        <xs:complexType>
+          <xs:sequence>
+            <xs:element name="extension" type="ReserveRecertExtension"
+                        minOccurs="0" maxOccurs="unbounded"/>
+          </xs:sequence>
+        </xs:complexType>
+      </xs:element>
+      <xs:element name="generator"            type="xs:string" minOccurs="0"/>
+    </xs:sequence>
+  </xs:complexType>
+
+  <xs:element name="reserve" type="ReserveContent"/>
+
+  <!-- ================================================================
+       Top-level: <rig>  (D33, D37, D38, R.2.0a)
+       ================================================================
+       One file per rig under
+       ``logbook_root/rigs/<nickname>/rig.xml`` with a sibling
+       SHA256SUMS — folder-with-manifest layout per D33 so future
+       attachments (seal photos, rigger documents) are additive.
+
+       Per D33 the rig is the assembly: a stable identity
+       (id + nickname + jurisdiction + repack history) that
+       references four current components by id. The four refs
+       rotate over the rig's life (main on jumper-initiated swap,
+       the others only at repack events per D37); the rig's
+       identity stays stable across rotations.
+
+       Per D34 the rig is NOT a component — it carries no
+       ``status`` field, no ``assigned_rig_id``. Notes_log shape is
+       reused from the component base since the use case (free-text
+       audit log of rig-level events) is identical.
+
+       D38: ``<repack_history>`` is an ordered list (oldest first).
+       The latest entry's ``<date>`` drives the rig's next-repack-
+       due clock per the rig's ``<jurisdiction>``. RigCreate accepts
+       an initial repack_history at onboarding; RigUpdate forbids
+       mutating it (R.5 territory).
+       ================================================================ -->
+
+  <xs:element name="rig">
+    <xs:complexType>
+      <xs:sequence>
+        <xs:element name="id"                   type="UUID"/>
+        <xs:element name="nickname"             type="RigNickname"/>
+        <xs:element name="jurisdiction"         type="Jurisdiction"/>
+        <!-- D37: four current component references. Required at
+             create time; the service layer enforces "every component
+             is in zero or one rigs" by setting each component's
+             assigned_rig_id when the rig is written. -->
+        <xs:element name="current_main_id"      type="UUID"/>
+        <xs:element name="current_reserve_id"   type="UUID"/>
+        <xs:element name="current_aad_id"       type="UUID"/>
+        <xs:element name="current_container_id" type="UUID"/>
+        <!-- D58: starred = "default rig for the jump-log form".
+             Optional, elided when false so unstarred rigs serialise
+             without the element. The service layer enforces the
+             invariant "≥1 rig ⇒ exactly one starred" via
+             create-auto-star, PUT /rigs/{id}/star, and the
+             delete-auto-move transitions. -->
+        <xs:element name="starred"              type="xs:boolean"  minOccurs="0"/>
+        <!-- D59: display_order drives the carousel left-to-right.
+             create_rig stamps max(existing)+1 so new rigs land
+             rightmost; reorder_rigs is the only other mutator.
+             Optional so pre-D59 rig.xml parses without the element
+             (legacy rigs sort to the end via the list_rigs
+             tiebreaker chain). -->
+        <xs:element name="display_order"
+                    type="xs:nonNegativeInteger"                   minOccurs="0"/>
+        <!-- D38: append-only repack history. Wrapper elides when
+             empty so a freshly-created rig's XML stays compact. -->
+        <xs:element name="repack_history" minOccurs="0">
+          <xs:complexType>
+            <xs:sequence>
+              <xs:element name="repack" type="RepackEntryType"
+                          minOccurs="0" maxOccurs="unbounded"/>
+            </xs:sequence>
+          </xs:complexType>
+        </xs:element>
+        <!-- Free-text audit log. Reuses the NotesLogEntry shape from
+             the component base. Wrapper elides when empty. -->
+        <xs:element name="notes_log" minOccurs="0">
+          <xs:complexType>
+            <xs:sequence>
+              <xs:element name="entry" type="NotesLogEntry"
+                          minOccurs="0" maxOccurs="unbounded"/>
+            </xs:sequence>
+          </xs:complexType>
+        </xs:element>
+        <!-- D32 audit timestamps. Authored by the service layer;
+             optional in the XSD so a hand-crafted rig.xml validates. -->
+        <xs:element name="created_at"           type="xs:dateTime" minOccurs="0"/>
+        <xs:element name="updated_at"           type="xs:dateTime" minOccurs="0"/>
+        <!-- Q4 write-time provenance, same posture as <jump>. -->
+        <xs:element name="generator"            type="xs:string"   minOccurs="0"/>
+      </xs:sequence>
+    </xs:complexType>
+  </xs:element>
+
+  <!-- ================================================================
+       Top-level: <jumper>  (D33, R.2.0a; D47 / Phase C.1 layout)
+       ================================================================
+       One folder per jumper under
+       ``logbook_root/jumpers/<uuid>/`` containing ``jumper.xml`` +
+       ``SHA256SUMS`` + ``attachments/`` (D47, Phase C.1). The pre-
+       D47 layout was a flat single file at ``jumpers/<uuid>.xml``;
+       the migration in ``backend/storage/jumper_migration.py``
+       promotes any legacy file on bootstrap. v0.1 ships single-
+       jumper per D33 but the entity supports multiple records for
+       forward compat.
+
+       Per D33 the jumper carries ``exit_weight_lb`` (drives D45
+       lineset wear math, live-read by the budget calc per D46;
+       no longer snapshotted onto the lineset) plus the wingloading-
+       driven AAD mode nudge, and ``exit_weight_updated_at`` so the
+       UI can prompt yellow after 365 days of staleness.
+
+       ``name`` is optional — v0.1's single-jumper file is implicitly
+       "the logbook owner"; the field exists for rig snapshots and
+       printouts.
+       ================================================================ -->
+
+  <xs:complexType name="JumperContent">
+    <xs:annotation><xs:documentation>
+      Reusable jumper shape — used by the top-level ``jumper``
+      element AND by ``rig_snapshot/jumper`` (R.2.1, D36).
+
+      D47 / Phase B.3: extends with six optional sibling collections
+      (memberships, cops, ratings, tandem_ratings, medicals,
+      attachments) plus the audit fields that were already here.
+      Each collection wrapper is itself optional and elides when the
+      jumper holds no entries of that kind, keeping a freshly-
+      created jumper file compact.
+
+      Snapshot semantics (D36): the rig-snapshot writer leaves the
+      credential collections empty — credentials are jumper-state,
+      not jump-state, and freezing them per-jump would multiply the
+      file count without value. The XSD tolerates either shape (the
+      collections are optional); the per-context invariant is
+      enforced by the writer, mirroring how MainContent's
+      lineset_history is empty inside snapshots and populated at the
+      top level.
+    </xs:documentation></xs:annotation>
+    <xs:sequence>
+      <xs:element name="id"                      type="UUID"/>
+      <xs:element name="name"                    type="JumperName"  minOccurs="0"/>
+      <!-- xs:decimal with non-negative-strict (>0) constraint. The
+           wear math and wingloading both divide by exit weight, so
+           zero is meaningless. ``:g`` formatting on the writer
+           side keeps integer values from gaining a trailing .0. -->
+      <xs:element name="exit_weight_lb">
+        <xs:simpleType>
+          <xs:restriction base="xs:decimal">
+            <xs:minExclusive value="0"/>
+          </xs:restriction>
+        </xs:simpleType>
+      </xs:element>
+      <!-- Date the exit weight was last confirmed by the user.
+           Drives the 365-day staleness prompt per D33. xs:date
+           (not xs:dateTime) — clock-precision is irrelevant for a
+           365-day window and the user typed the date, not the
+           timestamp. Optional in the XSD so a hand-crafted jumper
+           validates; the service stamps it on every weight write. -->
+      <xs:element name="exit_weight_updated_at" type="xs:date"     minOccurs="0"/>
+      <!-- D47 / B.3: federation memberships. CSPA, USPA, OTHER. The
+           parent's `org` field plus the optional `org_other` carries
+           the federation identity; expiry_date drives the 30-day
+           warning. -->
+      <xs:element name="memberships" minOccurs="0">
+        <xs:complexType>
+          <xs:sequence>
+            <xs:element name="membership" type="MembershipType"
+                        minOccurs="0" maxOccurs="unbounded"/>
+          </xs:sequence>
+        </xs:complexType>
+      </xs:element>
+      <!-- D47 / B.3: federation Certificates of Proficiency / licenses.
+           CSPA Solo/A/B/C/D, USPA A/B/C/D, free text for OTHER. CoPs
+           do not expire by date in v0.1 (the "null and void" currency
+           rule is a future calculator slice); we record `issued_date`
+           so the calculator can land additively when the user asks. -->
+      <xs:element name="cops" minOccurs="0">
+        <xs:complexType>
+          <xs:sequence>
+            <xs:element name="cop" type="CopType"
+                        minOccurs="0" maxOccurs="unbounded"/>
+          </xs:sequence>
+        </xs:complexType>
+      </xs:element>
+      <!-- D47 / B.3: federation-issued ratings (Coach, AFFI, JM,
+           PFFI, Rigger tiers, etc.). Tandem instructor lives in
+           tandem_ratings, not here, because the rating is
+           manufacturer-issued (UPT / Strong) and scoped to the rig
+           system. The parent's `code` is checked against
+           CSPARatingCode / USPARatingCode at the Pydantic layer. -->
+      <xs:element name="ratings" minOccurs="0">
+        <xs:complexType>
+          <xs:sequence>
+            <xs:element name="rating" type="FederationRatingType"
+                        minOccurs="0" maxOccurs="unbounded"/>
+          </xs:sequence>
+        </xs:complexType>
+      </xs:element>
+      <!-- D47 / B.3: manufacturer-issued tandem ratings, scoped to
+           a rig system (UPT Vector, UPT Sigma, Strong Dual Hawk,
+           OTHER). The optional currency_reset_at is the manual
+           override that suppresses the not-current warning after a
+           supervised re-currency jump; everything else about
+           currency is derived from the jump index per D3. -->
+      <xs:element name="tandem_ratings" minOccurs="0">
+        <xs:complexType>
+          <xs:sequence>
+            <xs:element name="tandem_rating" type="TandemRatingType"
+                        minOccurs="0" maxOccurs="unbounded"/>
+          </xs:sequence>
+        </xs:complexType>
+      </xs:element>
+      <!-- D47 / B.3: government-issued aviation medicals. v0.1 only
+           models class_iii (the class commonly required for tandem
+           operations); higher classes can land additively. -->
+      <xs:element name="medicals" minOccurs="0">
+        <xs:complexType>
+          <xs:sequence>
+            <xs:element name="medical" type="MedicalType"
+                        minOccurs="0" maxOccurs="unbounded"/>
+          </xs:sequence>
+        </xs:complexType>
+      </xs:element>
+      <!-- D47 / B.3: jumper attachments registry. Each AttachmentType
+           entry is a card / medical certificate stored under
+           `logbook_root/jumpers/<id>/attachments/`. Credential
+           records (memberships, cops, ratings, tandem_ratings,
+           medicals) reference attachments by UUID via their
+           `card_attachment_id` field; the attachment id matches the
+           AttachmentType.id (added in B.2 as an optional field on
+           the existing AttachmentType — same shape as jump
+           attachments, plus the id for cross-references). -->
+      <xs:element name="attachments" minOccurs="0">
+        <xs:complexType>
+          <xs:sequence>
+            <xs:element name="attachment" type="AttachmentType"
+                        minOccurs="0" maxOccurs="unbounded"/>
+          </xs:sequence>
+        </xs:complexType>
+      </xs:element>
+      <!-- D32 audit timestamps; same posture as everywhere else. -->
+      <xs:element name="created_at"             type="xs:dateTime" minOccurs="0"/>
+      <xs:element name="updated_at"             type="xs:dateTime" minOccurs="0"/>
+      <xs:element name="generator"              type="xs:string"   minOccurs="0"/>
+    </xs:sequence>
+  </xs:complexType>
+
+  <xs:element name="jumper" type="JumperContent"/>
+
+  <!-- ================================================================
+       Top-level: <rig_snapshot>  (D36, R.2.1)
+       ================================================================
+       One file per jump under
+       ``logbook_root/jumps/[<N>] <title>/rig-snapshot.xml`` —
+       written when the jump is created (R.2.3) alongside jump.xml
+       and hashed into the same SHA256SUMS manifest. Frozen at log
+       time and immutable thereafter (D31 update_jump does not
+       rewrite it, D36).
+
+       Denormalizes Rig + four components + Jumper as they were on
+       the jump's date. Per D36 the snapshot does NOT include the
+       main's lineset_history — only ``current_lineset`` actually in
+       use on the jump. The MainContent type tolerates either shape
+       so the writer enforces the empty-history invariant on the
+       snapshot side.
+
+       Why not a nested element on jump.xml: D36 §"Alternatives"
+       — keeping the snapshot in a separate file lets the snapshot
+       shape evolve independently and keeps jump.xsd small for
+       third-party validators.
+       ================================================================ -->
+
+  <xs:element name="rig_snapshot">
+    <xs:complexType>
+      <xs:sequence>
+        <!-- D17 canonical UTC ISO-8601 timestamp recording when the
+             snapshot was taken. Authored by ``create_jump`` at the
+             moment the rig snapshot was frozen; should be very close
+             to (but not necessarily identical to) the jump's
+             created_at. -->
+        <xs:element name="snapshot_at" type="xs:dateTime"/>
+        <!-- Frozen rig identity at snapshot time. NOT a full Rig
+             — the snapshot doesn't carry repack_history (D36 keeps
+             snapshots compact). last_repack_date is the most
+             recent entry's date, computed at snapshot time and
+             frozen here. -->
+        <xs:element name="rig">
+          <xs:complexType>
+            <xs:sequence>
+              <xs:element name="id" type="UUID"/>
+              <xs:element name="nickname" type="RigNickname"/>
+              <xs:element name="jurisdiction" type="Jurisdiction"/>
+              <!-- Optional because a freshly-created rig with empty
+                   repack_history has no last-repack date yet. -->
+              <xs:element name="last_repack_date" type="xs:date"
+                          minOccurs="0"/>
+            </xs:sequence>
+          </xs:complexType>
+        </xs:element>
+        <!-- Frozen full denormalized copies. Each reuses the named
+             complex type that the corresponding top-level element
+             uses, so the field set stays in lockstep. -->
+        <xs:element name="main"      type="MainContent"/>
+        <xs:element name="reserve"   type="ReserveContent"/>
+        <xs:element name="aad"       type="AADContent"/>
+        <xs:element name="container" type="ContainerContent"/>
+        <xs:element name="jumper"    type="JumperContent"/>
+        <!-- Q4 write-time provenance, same posture as jump. -->
+        <xs:element name="generator" type="xs:string" minOccurs="0"/>
+      </xs:sequence>
+    </xs:complexType>
+  </xs:element>
+
+</xs:schema>

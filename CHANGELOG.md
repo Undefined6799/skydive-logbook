@@ -1,0 +1,86 @@
+# Changelog
+
+All notable changes to this project. Format loosely follows
+[Keep a Changelog](https://keepachangelog.com/en/1.1.0/); versions
+follow [PEP 440](https://peps.python.org/pep-0440/) (Python) and
+[SemVer](https://semver.org/) (frontend). The two stay in lockstep
+on the major / minor / patch number.
+
+## [0.1.0-beta.1] — initial public beta
+
+First public release. This is a beta — the on-disk format is stable
+(D2 + D18) but the desktop UX still has rough edges. Self-hosted,
+single-user, loopback-only (D48); your data stays on your machine.
+
+### Added — backend
+- Jumps: create / list / get / update / delete with attachment uploads
+  (D14 §1, §2; D30, D31).
+- Rig manager (D33): main canopy, reserve, AAD, container as
+  first-class entities; rig composition; per-jump rig snapshot in the
+  jump folder (D36); component assignment and swap rules (D37);
+  repack-event schema seam (D38, write-flow deferred to v0.2).
+- Dropzones as first-class entities (D44) with starred-DZ default
+  for jump-form prefill (D60).
+- People entity for group members and packers (D54).
+- Jumper credentials: federation memberships, CoPs, ratings,
+  manufacturer tandem ratings, government medicals; tandem-currency
+  calculator with per-manufacturer rules (D47).
+- Stats endpoint with D14 §4 aggregations (`/api/v1/stats`).
+- Verify + reindex operations endpoints (`/api/v1/verify`,
+  `/api/v1/reindex`).
+- `/api/v1/updates/check` — user-initiated GitHub Releases lookup
+  for "is there a newer version?" Settings → *Check for updates*
+  button surfaces it; no automatic download (D14 still defers
+  silent auto-update).
+- RFC 9457 problem+json error envelope on every failure (D16) with
+  request-id correlation to log records (D27).
+- Atomic-write discipline (D10) plus single-instance lockfile (D9)
+  and intra-process writer lock (D50).
+- Soft-delete to `.trash/` with timestamped folders (D19).
+
+### Added — data integrity surface
+- Schema drift detector: CI test fails if a Pydantic model field has
+  no matching reference in the XML serializer or no declaration in
+  the XSD (closes the D2 three-place invariant gap).
+- Dangling-reference detection in `verify`: surfaces jumps whose
+  `rig_id` / `dropzone_id` / `packed_by` / `group_members` reference
+  deleted (trashed) or never-existing entities.
+
+### Added — frontend
+- React SPA with Settings, Jumps, Profile, Inventory, My Rig,
+  Dropzones, Career Stats views.
+- pywebview-packaged native shell on macOS / Windows / Linux
+  (D11) launched by `backend.scripts.launch_desktop`.
+
+### Known caveats
+- **Unsigned binaries.** macOS Gatekeeper will warn that the app is
+  unsigned; right-click → Open the first time to bypass. Windows
+  SmartScreen will show "Windows protected your PC"; click *More
+  info* → *Run anyway*. Linux AppImages have no gatekeeper. See
+  the README for full install instructions.
+- **Automatic in-app update is not shipped.** The Settings
+  *Check for updates* button surfaces a new release if available,
+  but installation is manual (download from the release page,
+  replace the existing app).
+- **Loopback-only.** The REST API binds to `127.0.0.1` by default
+  (D48). Exposing the server to a LAN requires editing
+  `config.toml`; there is no authentication surface in v0.1, so
+  treat LAN exposure as opt-in development convenience only.
+- **Cloud-sync folders supported best-effort** (D49). The XML data
+  is safe under cloud-sync replication (each write is atomic and
+  manifest-verified), but the SQLite index may need rebuilding via
+  *Reindex from XML* after a sync conflict. The button is in
+  Settings → *Verify & Reindex*.
+- **No FlySight CSV parsing yet** (D14 deferred). FlySight files
+  can be attached to a jump but are stored as opaque blobs.
+- **`update_check_repo` is empty by default.** Set
+  `update_check_repo = "owner/repo"` in `config.toml` to enable
+  the Settings *Check for updates* button against your fork.
+  Unset, the button is hidden.
+
+### For developers
+- 1690 backend tests, 63 frontend tests; full triple gate
+  (`pytest`, `ruff check`, `pyright backend`) green on Python
+  3.11 / 3.12 / 3.13 across Linux / macOS / Windows runners.
+- See `DECISIONS.md` for the full rationale behind every load-
+  bearing choice; `DECISIONS-DRAFT.md` for in-flight decisions.

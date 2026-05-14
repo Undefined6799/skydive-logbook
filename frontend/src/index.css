@@ -1,0 +1,82 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* Design tokens — see reviews/design-system/design-language.md.
+   Phase 1 introduces the variables but leaves view-level inline
+   colors untouched; those migrate per-view in later phases. */
+:root {
+  /* Surfaces */
+  --bg: #0a0e14;
+  --surface-1: #131822;
+  --surface-2: #1a2030;
+  --surface-3: #232a3c;
+
+  /* Borders */
+  --border: #2a3245;
+  --border-strong: #3a4256;
+
+  /* Text */
+  --text: #e8edf3;
+  --text-muted: #8b97aa;
+  --text-faint: #5a6478;
+
+  /* Accent — soft sky blue */
+  --accent: #a8c5dc;
+  --accent-soft: #131c26;
+  --accent-soft-border: #2a3a4a;
+  --accent-hover: #b8d2e5;
+  --accent-ink: #0a1218;
+
+  /* Status (pastel) */
+  --status-ready: #a8d5b5;
+  --status-watch: #ddcb8c;
+  --status-action: #ddb494;
+  --status-critical: #d9a8a8;
+  --status-ready-bg: #131e18;
+  --status-watch-bg: #1e1c14;
+  --status-action-bg: #1e1814;
+  --status-critical-bg: #1e1515;
+
+  /* Type */
+  --font-ui: 'Archivo', -apple-system, system-ui, sans-serif;
+  --font-mono: 'JetBrains Mono', ui-monospace, 'SF Mono', Menlo, monospace;
+}
+
+html, body, #root {
+  background: var(--bg);
+  color: var(--text);
+  min-height: 100%;
+}
+
+body {
+  margin: 0;
+  font-family: var(--font-ui);
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+::-webkit-scrollbar { width: 8px; height: 8px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background: var(--border); border-radius: 4px; }
+::-webkit-scrollbar-thumb:hover { background: var(--border-strong); }
+
+button { font-family: inherit; }
+input, select, textarea { font-family: inherit; color: inherit; }
+input:focus, select:focus, textarea:focus { outline: none; }
+
+/* Delayed-reveal tooltip: hidden by default, fades in after ~700ms of
+   continuous hover on the wrapping ``.hover-hint`` element. Used by
+   the PLACE field to keep the linked-DZ confirmation text out of the
+   layout until the user actually asks for it. */
+.hover-hint .hover-hint-body {
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 160ms ease-out;
+  transition-delay: 0ms;
+}
+.hover-hint:hover .hover-hint-body,
+.hover-hint:focus-within .hover-hint-body {
+  opacity: 1;
+  transition-delay: 700ms;
+}

@@ -1,0 +1,520 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Tech debt progress — 2026-04-30 EOD</title>
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<style>
+  :root {
+    --bg: #0b0d0f;
+    --panel: #14171b;
+    --panel-2: #1a1e23;
+    --border: #2a2f36;
+    --text: #e7e7e8;
+    --muted: #8b9199;
+    --hi: #6b7280;
+    --accent: #6ea8ff;
+    --done: #22c55e;
+    --open: #f59e0b;
+    --decision: #c4b5fd;
+    --row: #11141a;
+    --row-alt: #161a20;
+    --hover: #1f242b;
+  }
+  * { box-sizing: border-box; }
+  html, body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif;
+    margin: 0;
+    line-height: 1.5;
+  }
+  body { padding: 32px 40px 80px; max-width: 1400px; margin: 0 auto; }
+  h1 { font-size: 28px; font-weight: 600; margin: 0 0 4px; letter-spacing: -0.01em; }
+  h2 { font-size: 18px; font-weight: 600; margin: 32px 0 12px; letter-spacing: -0.005em; }
+  h3 { font-size: 14px; font-weight: 600; margin: 16px 0 6px; color: var(--muted); text-transform: uppercase; letter-spacing: 0.04em; }
+  p { color: var(--muted); margin: 4px 0; }
+  .sub { color: var(--muted); font-size: 13px; }
+  .mono { font-family: ui-monospace, "SF Mono", Menlo, monospace; font-size: 12px; }
+  code { font-family: ui-monospace, "SF Mono", Menlo, monospace; font-size: 12px; background: var(--panel-2); padding: 1px 5px; border-radius: 3px; color: #d6e4ff; }
+
+  .progress-banner {
+    display: grid;
+    grid-template-columns: 2fr 1fr;
+    gap: 24px;
+    background: linear-gradient(180deg, #14171b 0%, #11141a 100%);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    padding: 20px 24px;
+    margin: 24px 0 8px;
+  }
+  .progress-banner .pct { font-size: 56px; font-weight: 600; line-height: 1; letter-spacing: -0.02em; color: var(--done); }
+  .progress-banner .pct-sub { color: var(--muted); font-size: 14px; margin-top: 4px; }
+  .progress-bar { background: #1a1e23; border-radius: 999px; height: 8px; margin: 14px 0 0; overflow: hidden; }
+  .progress-bar-fill { background: linear-gradient(90deg, #16a34a 0%, #22c55e 100%); height: 100%; }
+  .progress-banner .day-summary { font-size: 13px; color: #c4cad2; line-height: 1.7; }
+  .progress-banner .day-summary strong { color: var(--text); font-weight: 500; }
+
+  .stats {
+    display: grid;
+    grid-template-columns: repeat(6, 1fr);
+    gap: 12px;
+    margin: 16px 0 8px;
+  }
+  .stat {
+    background: var(--panel);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 12px 14px;
+  }
+  .stat .v { font-size: 22px; font-weight: 600; line-height: 1; }
+  .stat .l { font-size: 11px; color: var(--muted); text-transform: uppercase; letter-spacing: 0.04em; margin-top: 4px; }
+
+  .legend { display: flex; gap: 16px; flex-wrap: wrap; font-size: 12px; color: var(--muted); margin: 16px 0 8px; align-items: center; }
+  .legend .pip { width: 10px; height: 10px; border-radius: 2px; display: inline-block; vertical-align: middle; margin-right: 6px; }
+
+  .controls {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    margin: 16px 0 12px;
+    align-items: center;
+  }
+  .controls .filter {
+    display: flex;
+    gap: 6px;
+    flex-wrap: wrap;
+  }
+  .pill {
+    background: var(--panel);
+    border: 1px solid var(--border);
+    color: var(--text);
+    padding: 6px 12px;
+    border-radius: 999px;
+    font-size: 12px;
+    font-weight: 500;
+    cursor: pointer;
+    user-select: none;
+  }
+  .pill:hover { background: var(--hover); border-color: #3a414a; }
+  .pill[aria-pressed="true"] { background: #1d2a44; border-color: #2c4a8a; color: #cfe0ff; }
+
+  .controls input[type=search] {
+    flex: 1;
+    min-width: 200px;
+    background: var(--panel);
+    border: 1px solid var(--border);
+    color: var(--text);
+    padding: 7px 12px;
+    border-radius: 6px;
+    font-size: 13px;
+  }
+  .controls input[type=search]:focus { outline: 2px solid var(--accent); outline-offset: 1px; }
+
+  table {
+    width: 100%;
+    border-collapse: collapse;
+    background: var(--panel);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    overflow: hidden;
+  }
+  thead th {
+    background: var(--panel-2);
+    color: var(--muted);
+    text-align: left;
+    font-size: 11px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    padding: 10px 12px;
+    border-bottom: 1px solid var(--border);
+    cursor: pointer;
+    white-space: nowrap;
+    position: sticky; top: 0; z-index: 1;
+  }
+  thead th:hover { color: var(--text); }
+  thead th .arr { font-size: 10px; opacity: 0.6; margin-left: 3px; }
+  tbody tr { background: var(--row); }
+  tbody tr:nth-child(even) { background: var(--row-alt); }
+  tbody tr:hover { background: var(--hover); }
+  tbody tr.is-done { opacity: 0.55; }
+  tbody tr.is-done td.title { text-decoration: line-through; text-decoration-color: var(--muted); text-decoration-thickness: 1px; }
+  tbody tr.is-done td.title small { text-decoration: none; }
+  tbody td {
+    padding: 9px 12px;
+    border-top: 1px solid var(--border);
+    font-size: 13px;
+    vertical-align: top;
+  }
+  td.id { font-family: ui-monospace, "SF Mono", Menlo, monospace; font-size: 11px; color: var(--muted); white-space: nowrap; width: 60px; }
+  td.cat { font-size: 11px; text-transform: uppercase; letter-spacing: 0.04em; font-weight: 500; white-space: nowrap; width: 110px; }
+  td.title { font-weight: 500; }
+  td.title small { display: block; color: var(--muted); font-weight: 400; margin-top: 3px; line-height: 1.45; font-size: 12px; }
+  td.title small.shipped { color: #86efac; }
+  td.num { text-align: center; font-variant-numeric: tabular-nums; width: 60px; }
+  td.pri { text-align: center; font-weight: 600; font-variant-numeric: tabular-nums; width: 70px; }
+  td.phase { white-space: nowrap; font-size: 12px; color: var(--muted); width: 80px; text-align: center; }
+  td.status { white-space: nowrap; width: 100px; }
+
+  .pri-cell { display: inline-block; min-width: 32px; padding: 2px 8px; border-radius: 4px; }
+  .p-blocker { background: rgba(239,68,68,0.15); color: #fca5a5; }
+  .p-major { background: rgba(245,158,11,0.15); color: #fcd34d; }
+  .p-minor { background: rgba(101,163,13,0.15); color: #bef264; }
+  .p-low { background: rgba(107,114,128,0.18); color: #cbd5e1; }
+
+  .status-pill { display: inline-block; padding: 2px 9px; border-radius: 999px; font-size: 11px; font-weight: 500; text-transform: uppercase; letter-spacing: 0.04em; }
+  .s-done { background: rgba(34,197,94,0.15); color: #86efac; border: 1px solid rgba(34,197,94,0.3); }
+  .s-open { background: rgba(245,158,11,0.12); color: #fcd34d; border: 1px solid rgba(245,158,11,0.3); }
+  .s-decision { background: rgba(196,181,253,0.12); color: #c4b5fd; border: 1px solid rgba(196,181,253,0.3); }
+
+  .cat-DEP { color: #fca5a5; }
+  .cat-INFRA { color: #fcd34d; }
+  .cat-ARCH { color: #c4b5fd; }
+  .cat-CODE { color: #93c5fd; }
+  .cat-TEST { color: #6ee7b7; }
+  .cat-DOC { color: #f9a8d4; }
+
+  .phases {
+    display: grid;
+    grid-template-columns: repeat(2, 1fr);
+    gap: 14px;
+    margin-top: 8px;
+  }
+  .phase-card {
+    background: var(--panel);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 14px 16px;
+    position: relative;
+  }
+  .phase-card h4 { margin: 0 0 4px; font-size: 13px; font-weight: 600; letter-spacing: -0.005em; display: flex; align-items: baseline; justify-content: space-between; }
+  .phase-card h4 .pct-num { font-weight: 500; color: var(--muted); font-size: 12px; }
+  .phase-card .when { color: var(--muted); font-size: 11px; text-transform: uppercase; letter-spacing: 0.04em; margin-bottom: 10px; }
+  .phase-card .progress-bar { margin-bottom: 12px; }
+  .phase-card .progress-bar-fill.done-bar { background: linear-gradient(90deg, #16a34a 0%, #22c55e 100%); }
+  .phase-card ul { margin: 0; padding-left: 18px; }
+  .phase-card li { font-size: 12.5px; line-height: 1.55; margin: 3px 0; color: #c4cad2; }
+  .phase-card li code { font-size: 11px; }
+  .phase-card li.done-li { color: #6b7280; }
+  .phase-card li.done-li::before { content: "✓ "; color: #22c55e; font-weight: 600; }
+  .phase-card li.open-li::before { content: "• "; color: var(--open); }
+
+  .footer-note { font-size: 11px; color: var(--muted); margin-top: 32px; text-align: center; line-height: 1.6; }
+
+  @media (max-width: 900px) {
+    body { padding: 16px; }
+    .progress-banner { grid-template-columns: 1fr; }
+    .progress-banner .pct { font-size: 42px; }
+    .stats { grid-template-columns: repeat(2, 1fr); }
+    .phases { grid-template-columns: 1fr; }
+    td.num, td.pri, td.phase, td.status { width: auto; }
+  }
+</style>
+</head>
+<body>
+
+<header>
+  <h1>Tech debt — progress dashboard</h1>
+  <p class="sub">Updated 2026-04-30 EOD · supersedes <a href="2026-04-29-progress.html" style="color:#6ea8ff">2026-04-29-progress.html</a> for current status · day-2 close-out report at <a href="2026-04-30-finish-open-items.md" style="color:#6ea8ff">2026-04-30-finish-open-items.md</a></p>
+</header>
+
+<div class="progress-banner">
+  <div>
+    <div class="pct" id="pct-num">—</div>
+    <div class="pct-sub" id="pct-sub">— of 40 items shipped (cumulative)</div>
+    <div class="progress-bar"><div class="progress-bar-fill" id="overall-bar" style="width:0%"></div></div>
+  </div>
+  <div class="day-summary">
+    <strong>2026-04-30 velocity:</strong>
+    <ul style="margin:6px 0 0; padding-left:18px;">
+      <li>1418 → <strong>1459 backend tests pass</strong> (+41 new tests, 1 Mac-only skip)</li>
+      <li>0 → <strong>7 frontend Vitest tests</strong> + new CI job (Node 20, ubuntu-latest)</li>
+      <li>D51 → <strong>D52 D-entries</strong> (D52 DRAFT — code-signing posture for v0.1)</li>
+      <li>New top-level files: <code>skydive-logbook.spec</code>, <code>BUILD.md</code>, <code>build/icons/</code></li>
+      <li>12 of 13 brief items closed; INFRA-8 halted on sandbox permission (user must <code>rm</code> the two stray venvs locally)</li>
+      <li>Real bugs caught: pywebview 6.2.1 stub drift on FOLDER_DIALOG; vitest <code>vi.mock</code> Proxy hangs <code>await import</code>'s thenable probe</li>
+    </ul>
+  </div>
+</div>
+
+<div class="stats" id="stats"></div>
+
+<div class="legend" id="legend">
+  <span><span class="pip" style="background:#22c55e"></span>Done</span>
+  <span><span class="pip" style="background:#f59e0b"></span>Open</span>
+  <span><span class="pip" style="background:#c4b5fd"></span>Decision needed</span>
+  <span style="margin-left:auto">Click any column to sort · click a category or status pill to filter · type to search</span>
+</div>
+
+<div class="controls">
+  <div class="filter" id="status-filter">
+    <span class="pill" data-status="all" aria-pressed="true">All</span>
+    <span class="pill" data-status="open" aria-pressed="false">Open only</span>
+    <span class="pill" data-status="done" aria-pressed="false">Done only</span>
+    <span class="pill" data-status="decision" aria-pressed="false">Decision-needed</span>
+  </div>
+  <div class="filter" id="cat-filter">
+    <span class="pill" data-cat="all" aria-pressed="true">All cats</span>
+    <span class="pill" data-cat="DEP">Dep</span>
+    <span class="pill" data-cat="INFRA">Infra</span>
+    <span class="pill" data-cat="ARCH">Arch</span>
+    <span class="pill" data-cat="CODE">Code</span>
+    <span class="pill" data-cat="TEST">Test</span>
+    <span class="pill" data-cat="DOC">Doc</span>
+  </div>
+  <input type="search" id="search" placeholder="Search items, IDs, files…">
+</div>
+
+<table id="debt-table">
+  <thead>
+    <tr>
+      <th data-sort="status">Status</th>
+      <th data-sort="id">ID</th>
+      <th data-sort="category">Cat</th>
+      <th data-sort="title">Item</th>
+      <th data-sort="impact" class="num">I</th>
+      <th data-sort="risk" class="num">R</th>
+      <th data-sort="effort" class="num">E</th>
+      <th data-sort="priority" class="num">Pri <span class="arr">▾</span></th>
+      <th data-sort="phase" class="num">Phase</th>
+    </tr>
+  </thead>
+  <tbody id="debt-body"></tbody>
+</table>
+
+<h2>Phased plan — progress</h2>
+
+<div class="phases" id="phases-container"></div>
+
+<h2>What's next</h2>
+<p class="sub">After this session, the remaining open work is small and decision-bound:</p>
+<div style="background:var(--panel); border:1px solid var(--border); border-radius:8px; padding:14px 16px; margin-top:8px;">
+<ol style="margin:0; padding-left:22px; line-height:1.8; font-size:13px;">
+<li><strong>User action — INFRA-8</strong>: <code>rm -rf .venv-sandbox .venv-test</code> (sandbox can't do it; documented in <code>HANDOFF.md</code>).</li>
+<li><strong>Real first build per platform</strong> — INFRA-5 / INFRA-7 spec validates Python-syntax only. Run <code>uv run pyinstaller skydive-logbook.spec</code> on a real macOS / Windows / Linux machine; append the verified-on date to <code>BUILD.md</code> §Per-platform verification gaps.</li>
+<li><strong>D52 finalization</strong> — DRAFT today; revisit after the first beta release reveals the gatekeeper UX.</li>
+<li><strong>Decision-needed items</strong> — ARCH-2 (D24 <code>_hints</code>), ARCH-5 (GET attachment endpoint), CODE-6 (summary.md). All blocked on Alex's input.</li>
+<li><strong>CODE-1</strong> — <code>open_index</code> per-call connection refactor. Deferred until profiling justifies it.</li>
+<li><strong>DEP-2 audit follow-up</strong> — <code>uv pip audit</code> for any new transitive CVEs.</li>
+</ol>
+</div>
+
+<p class="footer-note">
+Generated 2026-04-30 EOD · supersedes <code>reviews/2026-04-29-progress.html</code> · day-2 close-out report at <code>reviews/2026-04-30-finish-open-items.md</code> · original audit historical record at <code>reviews/2026-04-29-tech-debt-audit.html</code>
+</p>
+
+<script>
+// Each item: id, category, title, detail, impact, risk, effort, phase, status, shipped
+// status: "done" | "open" | "decision"
+// shipped: short note about what specifically landed (only for "done")
+const ITEMS = [
+  // ----- DONE today -----
+  {id:"DEP-1", category:"DEP", title:"python-multipart floor admits 3 CVEs", detail:"<code>pyproject.toml:23</code> pinned <code>&gt;=0.0.9</code>; CVEs CVE-2024-24762, CVE-2024-53981, CVE-2026-40347.", impact:4, risk:5, effort:1, phase:"P0", status:"done", shipped:"Slice 2: tightened to <code>&gt;=0.0.26</code> with inline CVE references."},
+  {id:"INFRA-1", category:"INFRA", title:"No CI workflow", detail:"<code>.github/</code> didn't exist. The #1 release-infra gap.", impact:5, risk:4, effort:2, phase:"P0", status:"done", shipped:"Slice 5: <code>.github/workflows/ci.yml</code> on Python 3.11/3.12/3.13 × Ubuntu/macOS/Windows, runs ruff + pyright + pytest."},
+  {id:"ARCH-1", category:"ARCH", title:"D26 reindex_from_xml not wired into startup", detail:"<code>main.py:67–92</code> logged a stale WARNING; reindex function existed but wasn't called.", impact:4, risk:4, effort:2, phase:"P0", status:"done", shipped:"Slice 4: wired into main.py with raise/abort branches refusing startup; 4 new tests."},
+  {id:"DEP-3", category:"DEP", title:"Other dep CVE audit not run", detail:"Targeted check for transitive deps.", impact:2, risk:3, effort:1, phase:"P0", status:"done", shipped:"Slice 3: pinned <code>starlette&gt;=0.49.1</code> direct (closes CVE-2024-47874, CVE-2025-54121, CVE-2025-62727 transitively through fastapi)."},
+  {id:"DOC-1", category:"DOC", title:"README.md stack drift", detail:"Claimed TypeScript / RHF / Zod / TanStack Query — all absent.", impact:3, risk:2, effort:1, phase:"P2", status:"done", shipped:"Phase 2: stack table corrected to Vite 5 + React 18 + Tailwind + Lucide; dev-commands rewritten."},
+  {id:"ARCH-3", category:"ARCH", title:"Bearer auth advertised but not enforced", detail:"<code>openapi.py</code> declared <code>bearerAuth</code>; no middleware; <code>api_key</code> in Settings was unused.", impact:3, risk:3, effort:2, phase:"P4", status:"done", shipped:"Slice 6: dropped scheme + api_key field; D48 records the loopback-only posture."},
+  {id:"INFRA-6", category:"INFRA", title:"No first-run folder-picker UX", detail:"Blocks ship of the desktop bundle.", impact:4, risk:3, effort:3, phase:"P4", status:"done", shipped:"2026-04-30: pinned with 4 tests in <code>test_launch_desktop.py</code> (existing-config-skips-picker, picker-accept, picker-cancel-falls-back-to-default, FOLDER_DIALOG-marker-pinned). Implementation already in <code>_setup_first_run</code>; tests close the gap."},
+  {id:"TEST-4", category:"TEST", title:"No XSD-rejection write-path test", detail:"Invariant 2 (CLAUDE.md §5).", impact:2, risk:2, effort:1, phase:"P1", status:"done", shipped:"2026-04-30: <code>TestXsdRejectionBlocksWrite</code> in <code>test_create_jump.py</code> — monkey-patches <code>jump_to_element</code> to drop the required <code>&lt;date&gt;</code> element; asserts <code>XSDValidationError</code> + no <code>jump.xml</code> + no <code>SHA256SUMS</code> + no SQLite row. Audit's wording was imprecise (folder DOES exist after mkdir per D25 step 1); the precise invariant is now pinned."},
+  {id:"TEST-5", category:"TEST", title:"No NFC round-trip test", detail:"D4 mandate; nothing asserts NFD-in → NFC-on-disk.", impact:2, risk:2, effort:1, phase:"P1", status:"done", shipped:"2026-04-30: <code>test_folder_name_normalises_nfd_title_to_nfc</code> creates a jump with NFD title (Cafe + combining acute), asserts on-disk folder name is the NFC byte sequence."},
+  {id:"INFRA-4", category:"INFRA", title:".venv-sandbox / .venv-test not in .gitignore", detail:"Three venvs at root; only <code>.venv/</code> ignored.", impact:2, risk:2, effort:1, phase:"P0", status:"done", shipped:"Slice 1: <code>.venv-*</code> pattern added to root <code>.gitignore</code>."},
+  {id:"TEST-2", category:"TEST", title:"No crash-path tests for D44 dropzone CRUD", detail:"Same crash class as <code>update_jump</code>; CLAUDE.md §7 mandate.", impact:3, risk:3, effort:3, phase:"P1", status:"done", shipped:"2026-04-30: <code>_crash_child.py</code> extended with <code>dropzone-{create,update,delete}</code> dispatchers; <code>test_dropzone_crash_recovery.py</code> (8 tests) covers <code>after_xml_write</code> and <code>after_trash_move</code> crash points across CRUD plus reindex-heals assertions for each."},
+  {id:"ARCH-4", category:"ARCH", title:"update_jump rename/index race window", detail:"§A7 race; D9 covers inter-process only.", impact:3, risk:3, effort:3, phase:"P4", status:"done", shipped:"Implemented D50: 44 service writes + 4 rename-prone reads decorated. Surfaced 2 D-entry corrections (RLock not Lock; reads must lock too). 2 integration tests."},
+  {id:"TEST-8", category:"TEST", title:"Frontend has zero tests", detail:"Vitest smoke tests recommended.", impact:3, risk:3, effort:3, phase:"P4", status:"done", shipped:"2026-04-30: vitest + jsdom + @testing-library/react wired; 7 view-render smoke tests in <code>frontend/test/views.smoke.test.jsx</code>; <code>frontend</code> CI job (Node 20, ubuntu-latest) added to <code>.github/workflows/ci.yml</code>."},
+  {id:"TEST-1", category:"TEST", title:"No crash-path tests for update_jump / delete_jump", detail:"<code>_crash_child.py</code> covered only create_jump; CLAUDE.md §7 mandate.", impact:4, risk:4, effort:4, phase:"P1", status:"done", shipped:"Extended <code>_crash_child.py</code> with OPERATION dispatcher; 9 new crash tests across 4 new D25 rows (update_after_xml_write / _manifest / _rename, delete_after_trash_move)."},
+  {id:"TEST-3", category:"TEST", title:"Zero tests for launch_desktop.py", detail:"605 lines, cross-platform.", impact:4, risk:4, effort:4, phase:"P4", status:"done", shipped:"2026-04-30: <code>test_launch_desktop.py</code> (23 tests) covers import-surface, project-root resolution, vite-build heuristics, source-mtime check, npm-missing branch, config writing, JsApi non-webview methods, wait-for-backend timeout, main short-circuit, and the first-run picker (4 INFRA-6 tests). Real bug caught: pywebview 6.2.1 stub drift on <code>FOLDER_DIALOG</code> typed as <code>module_property</code>."},
+  {id:"INFRA-5", category:"INFRA", title:"No PyInstaller spec (D11)", detail:"Per-platform bundlers don't exist.", impact:5, risk:3, effort:4, phase:"P4", status:"done", shipped:"2026-04-30: <code>skydive-logbook.spec</code> at project root (validates Python-syntax + tomllib loads pyproject.toml's version); <code>BUILD.md</code> documents per-platform build commands + verification gaps. Halt-and-document: actual binary build needs real per-platform machines (GitHub Linux runner could smoke-build but deferred)."},
+  {id:"CODE-2", category:"CODE", title:"atomic_write missing parent-dir fsync + Darwin F_FULLFSYNC", detail:"Forward-review §A3 + §A4 durability gaps.", impact:2, risk:2, effort:2, phase:"P3", status:"done", shipped:"Added <code>_full_fsync</code> (Darwin F_FULLFSYNC fallthrough to os.fsync) + <code>_fsync_dir</code> (POSIX-only). Both atomic_write functions now durable through the full storage stack. 5 new tests. DOC-4 folded in (docstring caveats removed; behaviour documented instead)."},
+  {id:"DOC-5", category:"DOC", title:"No D-entry on cloud-sync deployment posture", detail:"WAL-on-cloud documented-incompatible; D-entry needed.", impact:2, risk:2, effort:2, phase:"P2", status:"done", shipped:"D49: cloud-sync supported best-effort; D26 reindex flow is the recovery path; XML data safe regardless."},
+  {id:"DOC-6", category:"DOC", title:"No D-entry on intra-process concurrency model", detail:"D9 covers inter-process only.", impact:2, risk:2, effort:2, phase:"P2", status:"done", shipped:"D50: in-process RLock at service layer; ARCH-4 implemented against D50; D-entry amended with two corrections caught during implementation."},
+  {id:"TEST-6", category:"TEST", title:"No DOCTYPE-in-CDATA pinning test", detail:"Validator's documented CDATA false-positive isn't tested.", impact:1, risk:2, effort:1, phase:"P1", status:"done", shipped:"2026-04-30: 2 tests in <code>test_validator.py</code> — <code>test_rejects_doctype_inside_cdata</code> + <code>test_rejects_doctype_case_insensitive</code> (4 byte variants). Pins the byte-scan posture against future parser refactors."},
+  {id:"CODE-5", category:"CODE", title:"_FOLDER_EXCLUDES missing OS-noise filenames", detail:"<code>verify</code> reports <code>.DS_Store</code> etc. as orphans.", impact:2, risk:1, effort:1, phase:"P3", status:"done", shipped:"CODE-5: added <code>.DS_Store</code>, <code>Thumbs.db</code>, <code>desktop.ini</code>, <code>.AppleDouble</code>, plus <code>._*</code> AppleDouble prefix matcher. 2 new pinning tests."},
+  {id:"CODE-7", category:"CODE", title:"PRAGMA busy_timeout unset (defaults to 0)", detail:"Cost-free insurance against future intra-process concurrency.", impact:1, risk:2, effort:1, phase:"P3", status:"done", shipped:"CODE-7: <code>busy_timeout = 250</code> set on every connection. D50 amended to document the in-code shape."},
+  {id:"INFRA-3", category:"INFRA", title:"Root .gitignore missing frontend dirs", detail:"Belt-and-braces.", impact:1, risk:2, effort:1, phase:"P0", status:"done", shipped:"Slice 1: <code>frontend/{node_modules,dist,.vite}</code> + vite timestamp pattern added."},
+  {id:"DOC-2", category:"DOC", title:"ARCHITECTURE.md frontend section is stale", detail:"Claimed TypeScript + 'not yet scaffolded'.", impact:2, risk:1, effort:1, phase:"P2", status:"done", shipped:"Phase 2: rewrote frontend section against actual JS-based React tree; corrected hot-path step ordering and OpenAPI URL."},
+  {id:"DOC-3", category:"DOC", title:"HANDOFF.md is 6 days stale", detail:"Dated end-of-Phase-3.6, 32 D-entries, 440 tests.", impact:2, risk:1, effort:1, phase:"P2", status:"done", shipped:"Phase 2: full rewrite reflecting D51, 1418 tests, CI live, reindex wired, etc."},
+  {id:"DOC-4", category:"DOC", title:"atomic_write docstring missing fsync caveats", detail:"Forward-review §A3, §A4.", impact:1, risk:2, effort:1, phase:"P2", status:"done", shipped:"Folded into CODE-2: instead of documenting caveats, implemented the actual fixes. Docstrings now describe the durable-by-construction behaviour."},
+  {id:"ARCH-2", category:"ARCH", title:"D24 _hints channel completely unimplemented", detail:"Ship the one v0.1 code or supersede D24.", impact:2, risk:2, effort:3, phase:"P5", status:"decision"},
+  {id:"ARCH-5", category:"ARCH", title:"No GET attachment download endpoint", detail:"User can't preview a jump video in-app today; verify intent first.", impact:3, risk:1, effort:3, phase:"P4", status:"decision"},
+  {id:"CODE-4", category:"CODE", title:"sanitize_folder_name has no byte-length cap", detail:"Long emoji-dense titles produce obscure OSError instead of clean 422.", impact:2, risk:1, effort:2, phase:"P3", status:"done", shipped:"2026-04-30: added <code>_MAX_FOLDER_NAME_BYTES = 255</code> + <code>max_bytes</code> param. Caps UTF-8 byte length (not codepoint count) so emoji-dense titles surface a clean ValueError before <code>mkdir</code> sees them. 4 new tests."},
+  {id:"CODE-8", category:"CODE", title:"RFC 6901 pointer escaping not implemented", detail:"<code>~</code> → <code>~0</code>, <code>/</code> → <code>~1</code>.", impact:1, risk:2, effort:2, phase:"P3", status:"done", shipped:"CODE-8: <code>field_pointer()</code> + <code>_escape_pointer_token()</code> in <code>errors.py</code>; applied at every dynamic interpolation site. 7 new escape-order tests."},
+  {id:"TEST-7", category:"TEST", title:"No SIGKILL-leaves-recoverable-state test", detail:"<code>main.py</code> finally releases lock; SIGKILL skips it.", impact:2, risk:2, effort:3, phase:"P5", status:"done", shipped:"2026-04-30: <code>test_main_sigkill_lock_release.py</code> spawns <code>backend.main</code> on an ephemeral port, polls TCP for readiness, SIGKILL's, asserts a fresh in-process <code>acquire</code> succeeds. Pins POSIX flock auto-release. Skipped on Windows (filelock there uses msvcrt)."},
+  {id:"INFRA-2", category:"INFRA", title:"36 vite.config.js.timestamp-*.mjs files in repo", detail:"Vite HMR config-recompile artefacts.", impact:1, risk:1, effort:1, phase:"P0", status:"done", shipped:"Slice 1: pattern added to both <code>.gitignore</code>s; all 36 stray files deleted."},
+  {id:"CODE-3", category:"CODE", title:"trash.py uses non-canonical D17 timestamp", detail:"<code>strftime(\"%Y%m%dT%H%M%SZ\")</code> diverged from canonical D17.", impact:1, risk:1, effort:1, phase:"P3", status:"done", shipped:"CODE-3: corrected the audit's framing — D4 forbids colons on Windows so D17 canonical isn't usable. Added <code>_now_utc_basic_iso()</code> helper (basic ISO with ms precision; filesystem-safe). Documented the form-choice exception."},
+  {id:"CODE-9", category:"CODE", title:"4 ruff lint errors today", detail:"HANDOFF claimed '0 ruff warnings'; reality drifted.", impact:1, risk:1, effort:1, phase:"P0", status:"done", shipped:"Slice 1: 3 import-order I001 + 1 F401 + 1 SIM105 all fixed. Now genuinely green."},
+  {id:"DEP-2", category:"DEP", title:"No mypy / pyright type checking", detail:"Service-layer-heavy code with strict invariants.", impact:3, risk:2, effort:4, phase:"P5", status:"done", shipped:"Slices 7a–7c: full pyright rollout. 3760 strict errors → 0. Option 2 shape (strict for production, basic for tests, lxml at typed boundary). D51 records policy. CI gates the third tool. Architectural wins: <code>XMLElement = Any</code> alias removed 800-error lxml cascade; <code>namespace_of</code> + <code>validate_schema_file</code> helpers moved direct lxml use behind the typed boundary."},
+  {id:"INFRA-7", category:"INFRA", title:"App icon, version metadata, code signing", detail:"Platform-specific deployment.", impact:3, risk:2, effort:4, phase:"P4", status:"done", shipped:"2026-04-30: placeholder SVG icon at <code>build/icons/skydive-logbook.svg</code> + per-platform conversion recipes (.icns/.ico/.png). PyInstaller spec pulls version from <code>pyproject.toml</code> via <code>tomllib</code>. Signing hooks documented in <code>BUILD.md</code> §Code Signing. <strong>D52 DRAFT</strong> in <code>DECISIONS.md</code>: ad-hoc / unsigned for v0.1, signed before GA."},
+  {id:"CODE-1", category:"CODE", title:"open_index opens fresh connection per call", detail:"jump_service opens 1–3 per request; per-request dependency would be cleaner.", impact:2, risk:1, effort:3, phase:"P5", status:"open", shipped:"2026-04-30: profiled per audit's gating condition. open_index is ~76μs/call, ~0.5μs on held conn. 100 service requests at 3 opens each = 22ms total. Invisible at any plausible interactive rate. Stays open but pinned: don't refactor without a workload that actually shows cost (background reindex, async job). Profile in <code>reviews/2026-04-30-finish-open-items.md</code>."},
+  {id:"CODE-6", category:"CODE", title:"summary.md never written despite D5", detail:"Pick: implement or supersede D5.", impact:1, risk:1, effort:2, phase:"P4", status:"decision"},
+  {id:"DOC-7", category:"DOC", title:"Auto-memory snapshot is stale", detail:"Said Phase 3.5; reality is well past.", impact:1, risk:0, effort:1, phase:"P5", status:"done", shipped:"Phase 2: refreshed <code>project_skydive_logbook.md</code> with end-of-2026-04-29 audit section; <code>MEMORY.md</code> description line updated."},
+  {id:"INFRA-8", category:"INFRA", title:"Three .venv folders coexist", detail:"<code>.venv</code>, <code>.venv-sandbox</code>, <code>.venv-test</code>.", impact:1, risk:0, effort:1, phase:"P5", status:"open", shipped:"2026-04-30: HALTED — sandbox cannot delete the venvs (<code>Operation not permitted</code>). User must run <code>rm -rf .venv-sandbox .venv-test</code> locally. <code>HANDOFF.md</code> documents the canonical venv name as <code>.venv</code>."},
+];
+
+ITEMS.forEach(it => { it.priority = (it.impact + it.risk) * (6 - it.effort); });
+ITEMS.sort((a,b) => b.priority - a.priority);
+
+const CAT_LABEL = { DEP:"Dependency", INFRA:"Infrastructure", ARCH:"Architecture", CODE:"Code", TEST:"Test", DOC:"Documentation" };
+const PHASE_LABEL = { P0:"P0", P1:"P1", P2:"P2", P3:"P3", P4:"P4", P5:"P5" };
+const STATUS_LABEL = { done:"Done", open:"Open", decision:"Decide" };
+
+function priClass(v) {
+  if (v >= 30) return "p-blocker";
+  if (v >= 18) return "p-major";
+  if (v >= 10) return "p-minor";
+  return "p-low";
+}
+
+function statusClass(s) {
+  if (s === "done") return "s-done";
+  if (s === "decision") return "s-decision";
+  return "s-open";
+}
+
+const tbody = document.getElementById("debt-body");
+
+function render(rows) {
+  tbody.innerHTML = "";
+  rows.forEach(it => {
+    const tr = document.createElement("tr");
+    tr.dataset.cat = it.category;
+    tr.dataset.status = it.status;
+    if (it.status === "done") tr.classList.add("is-done");
+    const detail = it.shipped
+      ? `${it.detail}<small class="shipped"><strong>shipped:</strong> ${it.shipped}</small>`
+      : `<small>${it.detail}</small>`;
+    tr.innerHTML = `
+      <td class="status"><span class="status-pill ${statusClass(it.status)}">${STATUS_LABEL[it.status]}</span></td>
+      <td class="id">${it.id}</td>
+      <td class="cat cat-${it.category}">${CAT_LABEL[it.category].slice(0,4)}</td>
+      <td class="title">${it.title}${it.shipped ? "" : ""}<small${it.shipped ? ' class="shipped"' : ''}>${it.shipped ? '<strong>shipped:</strong> ' + it.shipped : it.detail}</small></td>
+      <td class="num">${it.impact}</td>
+      <td class="num">${it.risk}</td>
+      <td class="num">${it.effort}</td>
+      <td class="pri"><span class="pri-cell ${priClass(it.priority)}">${it.priority}</span></td>
+      <td class="phase">${PHASE_LABEL[it.phase]}</td>
+    `;
+    tbody.appendChild(tr);
+  });
+}
+render(ITEMS);
+
+// Stats
+function renderStats() {
+  const done = ITEMS.filter(i => i.status === "done").length;
+  const open = ITEMS.filter(i => i.status === "open").length;
+  const decision = ITEMS.filter(i => i.status === "decision").length;
+  const blocker = ITEMS.filter(i => i.priority >= 30 && i.status !== "done").length;
+  const major = ITEMS.filter(i => i.priority >= 18 && i.priority < 30 && i.status !== "done").length;
+  const stats = [
+    { v: ITEMS.length, l: "Total items" },
+    { v: done, l: "Done" },
+    { v: open, l: "Open" },
+    { v: decision, l: "Decide" },
+    { v: blocker, l: "Open blockers" },
+    { v: major, l: "Open majors" },
+  ];
+  document.getElementById("stats").innerHTML = stats.map(s => `
+    <div class="stat"><div class="v">${s.v}</div><div class="l">${s.l}</div></div>
+  `).join("");
+
+  // Banner pct
+  const pct = Math.round((done / ITEMS.length) * 100);
+  document.getElementById("pct-num").textContent = pct + "%";
+  document.getElementById("pct-sub").textContent = `${done} of ${ITEMS.length} items shipped today (${decision} need a decision; ${open} still open)`;
+  document.getElementById("overall-bar").style.width = pct + "%";
+}
+renderStats();
+
+// Phase progress cards
+function renderPhases() {
+  const phases = [
+    {id:"P0", title:"Phase 0 — Pre-ship critical", when:"~1 day · DONE"},
+    {id:"P1", title:"Phase 1 — Test debt", when:"~1 week"},
+    {id:"P2", title:"Phase 2 — Documentation alignment", when:"~3 days · DONE"},
+    {id:"P3", title:"Phase 3 — Code hygiene", when:"~1 week"},
+    {id:"P4", title:"Phase 4 — Pre-ship blockers", when:"~2 weeks"},
+    {id:"P5", title:"Phase 5 — Post-v0.1 / longer-term", when:"no fixed date"},
+  ];
+  const container = document.getElementById("phases-container");
+  container.innerHTML = phases.map(p => {
+    const items = ITEMS.filter(i => i.phase === p.id);
+    const done = items.filter(i => i.status === "done").length;
+    const total = items.length;
+    const pct = total > 0 ? Math.round((done / total) * 100) : 0;
+    items.sort((a,b) => b.priority - a.priority);
+    return `
+      <div class="phase-card">
+        <h4>${p.title}<span class="pct-num">${done} / ${total} · ${pct}%</span></h4>
+        <div class="when">${p.when}</div>
+        <div class="progress-bar"><div class="progress-bar-fill done-bar" style="width:${pct}%"></div></div>
+        <ul>
+          ${items.map(it => `<li class="${it.status === "done" ? "done-li" : "open-li"}"><strong>${it.id}</strong> — ${it.title}</li>`).join("")}
+        </ul>
+      </div>
+    `;
+  }).join("");
+}
+renderPhases();
+
+// Sort
+let sortKey = "priority";
+let sortDir = -1;
+document.querySelectorAll("th[data-sort]").forEach(th => {
+  th.addEventListener("click", () => {
+    const k = th.dataset.sort;
+    if (sortKey === k) sortDir = -sortDir;
+    else { sortKey = k; sortDir = (k === "priority" || k === "impact" || k === "risk") ? -1 : 1; }
+    applyFilters();
+    document.querySelectorAll("th .arr").forEach(s => s.textContent = "");
+    const arrEl = th.querySelector(".arr");
+    if (arrEl) arrEl.textContent = sortDir > 0 ? "▴" : "▾";
+  });
+});
+
+// Filters
+let activeStatus = "all";
+let activeCat = "all";
+let searchTerm = "";
+
+document.getElementById("status-filter").addEventListener("click", e => {
+  if (!e.target.matches(".pill")) return;
+  document.getElementById("status-filter").querySelectorAll(".pill").forEach(p => p.setAttribute("aria-pressed", "false"));
+  e.target.setAttribute("aria-pressed", "true");
+  activeStatus = e.target.dataset.status;
+  applyFilters();
+});
+document.getElementById("cat-filter").addEventListener("click", e => {
+  if (!e.target.matches(".pill")) return;
+  document.getElementById("cat-filter").querySelectorAll(".pill").forEach(p => p.setAttribute("aria-pressed", "false"));
+  e.target.setAttribute("aria-pressed", "true");
+  activeCat = e.target.dataset.cat;
+  applyFilters();
+});
+document.getElementById("search").addEventListener("input", e => {
+  searchTerm = e.target.value.toLowerCase().trim();
+  applyFilters();
+});
+
+function applyFilters() {
+  let rows = [...ITEMS].sort((a,b) => {
+    const av = a[sortKey], bv = b[sortKey];
+    if (typeof av === "number") return (av - bv) * sortDir;
+    return String(av).localeCompare(String(bv)) * sortDir;
+  });
+  rows = rows.filter(it => {
+    if (activeStatus !== "all" && it.status !== activeStatus) return false;
+    if (activeCat !== "all" && it.category !== activeCat) return false;
+    if (searchTerm) {
+      const hay = (it.id + " " + it.title + " " + it.detail + " " + (it.shipped || "")).toLowerCase();
+      if (!hay.includes(searchTerm)) return false;
+    }
+    return true;
+  });
+  render(rows);
+}
+</script>
+
+</body>
+</html>

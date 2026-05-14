@@ -1,0 +1,12 @@
+node_modules
+dist
+dist-ssr
+.DS_Store
+.vite
+# Vite writes transient timestamp-suffixed config copies on HMR config
+# reloads; they should never be committed.
+vite.config.*.timestamp-*.mjs
+*.local
+.env
+.env.*
+!.env.example

@@ -1,0 +1,187 @@
+[project]
+name = "skydive-logbook"
+version = "0.1.0b1"
+description = "Self-hosted skydiving logbook with XML+XSD integrity and a public REST API."
+readme = "README.md"
+license = { file = "LICENSE" }
+requires-python = ">=3.11"
+authors = [{ name = "skydive-logbook contributors" }]
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "License :: OSI Approved :: MIT License",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+]
+dependencies = [
+    "fastapi>=0.110",
+    # Starlette is a transitive dep through fastapi, but fastapi's own
+    # version constraint lags behind starlette security releases (see
+    # https://github.com/fastapi/fastapi/discussions/14424). Pin
+    # explicitly so a fresh `pip install` cannot resolve to a vulnerable
+    # version even if a permitted fastapi resolves an old starlette.
+    # Floor must stay >=0.49.1 — earlier versions are vulnerable to
+    # CVE-2024-47874 (multipart DoS, fixed 0.40.0),
+    # CVE-2025-54121 (large-file multipart DoS, fixed 0.47.2),
+    # CVE-2025-62727 (Range header O(n^2) DoS, fixed 0.49.1).
+    "starlette>=0.49.1",
+    "uvicorn[standard]>=0.27",
+    "pydantic>=2.6",
+    "pydantic-settings>=2.3",
+    "lxml>=5.1",
+    "filelock>=3.13",
+    # Floor must stay >=0.0.26 — earlier versions are vulnerable to
+    # CVE-2024-24762 (Content-Type ReDoS, fixed 0.0.7),
+    # CVE-2024-53981 (boundary parsing DoS, fixed 0.0.18),
+    # CVE-2026-40347 (preamble/epilogue parsing stall, fixed 0.0.26).
+    "python-multipart>=0.0.26",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=8.0",
+    "pytest-asyncio>=0.23",
+    "httpx>=0.26",
+    "ruff>=0.3",
+    # Per D-entry forthcoming with the pyright rollout: type-checking
+    # gates every PR alongside ruff. Pin the major to keep CI
+    # deterministic across pyright's rapid release cadence; bump
+    # deliberately when a feature we want lands.
+    "pyright>=1.1.400",
+]
+desktop = [
+    # pywebview (D11): native WebView host for the bundled SPA on
+    # macOS (WKWebView), Windows (WebView2), and Linux (WebKit2GTK).
+    # Optional because the backend ships independently of the desktop
+    # window — CI and headless installs don't need this dep.
+    "pywebview>=5.0",
+]
+
+[project.scripts]
+skydive-logbook = "backend.main:main"
+skydive-logbook-desktop = "backend.scripts.launch_desktop:main"
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["backend"]
+
+[tool.hatch.build.targets.wheel.force-include]
+"backend/xml/schema" = "backend/xml/schema"
+"backend/storage/templates" = "backend/storage/templates"
+
+[tool.pytest.ini_options]
+testpaths = ["backend/tests"]
+addopts = "-ra"
+asyncio_mode = "auto"
+
+[tool.pyright]
+# Per D-entry forthcoming with the pyright rollout:
+# - Production code is type-checked strictly.
+# - ``backend/tests/`` runs at the basic baseline (test fixtures
+#   inherently propagate ``Unknown`` types pyright cannot pin; tests
+#   aren't where bugs hide for this codebase).
+# - ``backend/xml/`` runs at basic plus per-environment overrides
+#   for the lxml stub gap (lxml's ``etree`` C extension surfaces as
+#   ``None`` under strict; that's an upstream stub-completeness
+#   issue, not a real type bug).
+include = ["backend"]
+# Mirror the runtime floor (D15: Python 3.11+) so pyright analyses
+# with the same syntax + stdlib types the code actually runs against.
+pythonVersion = "3.11"
+# ``basic`` is the global default; ``strict`` paths below get the
+# full strict ruleset as if ``# pyright: strict`` were at the top of
+# each file. Pyright's docs are explicit that strict mode cannot be
+# *relaxed* via executionEnvironments — overrides may only increase
+# strictness — so the reverse approach (basic baseline + strict
+# allow-list) is the only configuration that produces Option 2.
+typeCheckingMode = "basic"
+# Production code surfaces. Each path becomes strict.
+strict = [
+    "backend/main.py",
+    "backend/config.py",
+    "backend/api",
+    "backend/services",
+    "backend/storage",
+    "backend/models",
+    "backend/scripts",
+    "backend/observability",
+]
+# Suppressions live next to the offending line as
+# ``# pyright: ignore[<rule>]`` comments — never a blanket file-level
+# disable. The narrow form keeps the suppression tied to a single
+# diagnostic and makes a future cleanup easy to grep for.
+
+# Per-folder override for ``backend/xml/``. lxml ships incomplete
+# stubs: ``lxml.etree`` is typed as a module-level ``None`` for many
+# attribute accesses, which trips reportAttributeAccessIssue +
+# reportOptionalMemberAccess on every ``etree.XMLParser`` /
+# ``etree.XMLSchema`` use. The basic baseline already silences the
+# Unknown* family for this folder; this override silences the
+# remaining lxml-stub-gap diagnostics so xml/ analysis is clean.
+[[tool.pyright.executionEnvironments]]
+root = "backend/xml"
+# extraPaths preserves project-root resolution so imports like
+# ``from backend.xml.validator import parse`` still resolve when this
+# env is matched (executionEnvironments narrow the resolution scope
+# to the env's root by default — adding "." restores project-root
+# resolution that the global config would otherwise provide).
+extraPaths = ["."]
+reportAttributeAccessIssue = "none"
+reportOptionalMemberAccess = "none"
+
+# Per-folder override for ``backend/tests/``. Tests use ``**kwargs``
+# fixture patterns where pyright cannot narrow dict-value types per
+# constructor parameter; lxml is also imported in a handful of XSD
+# tests. Neither pattern surfaces real type bugs — tests pass at
+# runtime because the values do match the parameter types — so the
+# diagnostic noise is annotation-debt without a load-bearing payoff.
+# Silenced rules:
+#   reportArgumentType — Jump(**fixture_dict) cannot type-narrow.
+#   reportOperatorIssue — `created_at > X` where created_at is
+#     declared str | None; tests guard with `if x is not None`
+#     but pyright's narrowing across helper boundaries is brittle.
+#   reportAttributeAccessIssue — lxml.etree imports in XSD tests.
+#   reportOptionalIterable / reportCallIssue — same fixture-typing
+#     class.
+# Production code is unaffected — the strict allow-list above covers
+# every production path, and pyright's "execution env" matches the
+# longest path prefix, so these overrides are scoped to tests only.
+[[tool.pyright.executionEnvironments]]
+root = "backend/tests"
+extraPaths = ["."]
+reportArgumentType = "none"
+reportOperatorIssue = "none"
+reportAttributeAccessIssue = "none"
+reportOptionalIterable = "none"
+reportCallIssue = "none"
+
+[tool.ruff]
+line-length = 100
+target-version = "py311"
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I", "UP", "B", "SIM"]
+ignore = ["E501"]
+
+[tool.ruff.lint.flake8-bugbear]
+# FastAPI canonical idiom: Depends(...)/Query(...)/Header(...) in
+# parameter defaults is how handlers declare injected dependencies
+# and validated query params. Ruff's B008 flags function calls in
+# defaults as a bug; this allow-list tells bugbear those specific
+# callables are safe. See
+# https://docs.astral.sh/ruff/settings/#lint_flake8-bugbear_extend-immutable-calls
+# and FastAPI docs §Tutorial/Dependencies.
+extend-immutable-calls = [
+    "fastapi.Depends",
+    "fastapi.Query",
+    "fastapi.Header",
+    "fastapi.Path",
+    "fastapi.Body",
+    "fastapi.Cookie",
+    "fastapi.Form",
+    "fastapi.File",
+    "fastapi.Security",
+]
