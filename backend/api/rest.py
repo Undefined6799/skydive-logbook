@@ -102,19 +102,25 @@ def create_app(*, mount_frontend: bool = True) -> FastAPI:
     # build serves the static frontend from the same origin (file:// or
     # localhost), where CORS doesn't apply, so this middleware is a
     # development affordance only — narrow the origin list, don't widen.
-    app.add_middleware(
-        CORSMiddleware,
-        allow_origins=[
-            "http://localhost:5173",
-            "http://127.0.0.1:5173",
-        ],
-        allow_credentials=True,
-        allow_methods=["*"],
-        allow_headers=["*"],
-        # Surface Location (POST 201 redirects) and X-Request-Id (D27
-        # correlation) to JS clients which can't read them by default.
-        expose_headers=["Location", "X-Request-Id"],
-    )
+    #
+    # Slice 21: the allow-list is now ``Settings.cors_allowed_origins``,
+    # configurable via ``SKYDIVE_CORS_ALLOWED_ORIGINS`` (comma-
+    # separated). A user who runs the dev server on a non-standard
+    # port, or who exposes the API to a known LAN host they trust,
+    # overrides the default without code changes. An empty list
+    # disables CORS entirely (Starlette's CORSMiddleware accepts
+    # ``allow_origins=[]`` and rejects every cross-origin request).
+    if _settings_at_build.cors_allowed_origins:
+        app.add_middleware(
+            CORSMiddleware,
+            allow_origins=_settings_at_build.cors_allowed_origins,
+            allow_credentials=True,
+            allow_methods=["*"],
+            allow_headers=["*"],
+            # Surface Location (POST 201 redirects) and X-Request-Id (D27
+            # correlation) to JS clients which can't read them by default.
+            expose_headers=["Location", "X-Request-Id"],
+        )
 
     @app.exception_handler(ServiceError)
     async def on_service_error(  # pyright: ignore[reportUnusedFunction]  # registered via decorator

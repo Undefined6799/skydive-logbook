@@ -114,6 +114,25 @@ class Settings(BaseSettings):
     # Env: ``SKYDIVE_MAX_FILE_BYTES``.
     max_file_bytes: int = Field(default=2 * 1024 * 1024 * 1024, ge=1)
 
+    # CORS allow-list. Defaults to the Vite dev origins (npm run
+    # dev serves the SPA at :5173 against the FastAPI :8000
+    # backend in dev mode); the packaged pywebview build serves
+    # both from the same origin so CORS doesn't apply.
+    #
+    # A user who runs the frontend dev server on a non-standard
+    # port, or who exposes the API to a known LAN host they trust,
+    # overrides this via ``SKYDIVE_CORS_ALLOWED_ORIGINS`` (comma-
+    # separated). Empty list disables CORS entirely (safe for
+    # same-origin deployments).
+    #
+    # Env: ``SKYDIVE_CORS_ALLOWED_ORIGINS`` (comma-separated).
+    cors_allowed_origins: list[str] = Field(
+        default_factory=lambda: [
+            "http://localhost:5173",
+            "http://127.0.0.1:5173",
+        ]
+    )
+
     # Whether unhandled-exception responses include the exception
     # type and message in the 500 problem+json body. The full
     # traceback always goes to the structured log via ``exc_info``
