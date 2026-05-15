@@ -10,6 +10,7 @@ import datetime as _dt
 import hashlib
 import json
 import logging
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 from uuid import uuid4
@@ -225,6 +226,23 @@ _HASH_BODY_PREFIX_BYTES = 4096
 _IDEMPOTENCY_TTL_SECONDS = 24 * 3600
 
 
+@dataclass(frozen=True)
+class _StoreArgs:
+    """Bundle of values the middleware writes into ``idempotency_keys``
+    once the inner handler has returned a 2xx. Frozen so the value
+    is read-only after construction (the middleware constructs it
+    after the handler returns and the response is fully captured).
+    """
+    key: str
+    user_id: str
+    request_hash: str
+    status: int
+    content_type: str | None
+    body: bytes
+    created_at: str
+    expires_at: str
+
+
 class IdempotencyKeyMiddleware:
     """Replay or short-circuit POSTs that carry an ``Idempotency-Key`` (D69).
 
@@ -407,7 +425,15 @@ class IdempotencyKeyMiddleware:
 
         await self.app(scope, replay_receive, capturing_send)
 
-        # Step 4: store on 2xx if response completed cleanly.
+        # Steps 4+5: store-on-2xx and purge-expired share a single
+        # connection. Both happen at the end of the request (after
+        # the handler), so combining the two SQLite opens into one
+        # avoids the redundant file-open round trip. The lookup at
+        # step 2 stays on its own connection — keeping a connection
+        # open across the handler call would idle it through an
+        # arbitrary-length upload and interact poorly with the D50
+        # writer lock the inner service write takes.
+        store_args: _StoreArgs | None = None
         if (
             response_complete["v"]
             and captured_status is not None
@@ -421,23 +447,19 @@ class IdempotencyKeyMiddleware:
                     except UnicodeDecodeError:
                         content_type = None
                     break
-            body_bytes = b"".join(captured_body_chunks)
-            expires_at = _iso_format(
-                now_dt + _dt.timedelta(seconds=_IDEMPOTENCY_TTL_SECONDS),
-            )
-            self._store(
+            store_args = _StoreArgs(
                 key=idem_key,
                 user_id=user_id,
                 request_hash=request_hash,
                 status=captured_status,
                 content_type=content_type,
-                body=body_bytes,
+                body=b"".join(captured_body_chunks),
                 created_at=now,
-                expires_at=expires_at,
+                expires_at=_iso_format(
+                    now_dt + _dt.timedelta(seconds=_IDEMPOTENCY_TTL_SECONDS),
+                ),
             )
-
-        # Step 5: opportunistic cleanup of expired rows.
-        self._purge_expired(now)
+        self._store_and_purge(store_args=store_args, now_iso=now)
 
     # ----- DB helpers ------------------------------------------------------ #
 
@@ -471,55 +493,55 @@ class IdempotencyKeyMiddleware:
             row["expires_at"],
         )
 
-    def _store(
+    def _store_and_purge(
         self,
         *,
-        key: str,
-        user_id: str,
-        request_hash: str,
-        status: int,
-        content_type: str | None,
-        body: bytes,
-        created_at: str,
-        expires_at: str,
+        store_args: _StoreArgs | None,
+        now_iso: str,
     ) -> None:
-        try:
-            result = open_index(self.logbook_root)
-        except Exception:  # pragma: no cover - defensive
-            _logger.warning("idempotency_store_open_failed", exc_info=True)
-            return
-        try:
-            # ``INSERT OR REPLACE`` so that:
-            #   (a) an expired row with the same key gets overwritten
-            #       by the fresh successful response (the lookup
-            #       already treated the expired row as absent);
-            #   (b) a concurrent-in-flight duplicate key doesn't
-            #       crash with IntegrityError. The "last writer
-            #       wins" outcome is harmless: every in-flight
-            #       handler is producing the same logical response
-            #       (same hash, by construction), so whichever row
-            #       ends up persisted is correct.
-            result.conn.execute(
-                "INSERT OR REPLACE INTO idempotency_keys "
-                "(key, user_id, request_hash, response_status, "
-                " response_content_type, response_body, "
-                " created_at, expires_at) "
-                "VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
-                (
-                    key, user_id, request_hash, status,
-                    content_type, body, created_at, expires_at,
-                ),
-            )
-            result.conn.commit()
-        finally:
-            result.conn.close()
+        """Single-connection writer: insert (or replace) one row, then
+        delete expired rows. ``store_args`` is ``None`` when the
+        handler returned a non-2xx — in that case only the purge
+        runs. A single ``commit()`` flushes both statements as one
+        WAL transaction.
 
-    def _purge_expired(self, now_iso: str) -> None:
+        ``INSERT OR REPLACE`` semantics:
+          (a) an expired row with the same key gets overwritten by
+              the fresh successful response (the lookup already
+              treated the expired row as absent);
+          (b) a concurrent-in-flight duplicate key doesn't crash
+              with IntegrityError. The "last writer wins" outcome
+              is harmless: every in-flight handler is producing
+              the same logical response (same hash, by
+              construction), so whichever row ends up persisted
+              is correct.
+        """
         try:
             result = open_index(self.logbook_root)
         except Exception:  # pragma: no cover - defensive
+            _logger.warning(
+                "idempotency_store_open_failed", exc_info=True,
+            )
             return
         try:
+            if store_args is not None:
+                result.conn.execute(
+                    "INSERT OR REPLACE INTO idempotency_keys "
+                    "(key, user_id, request_hash, response_status, "
+                    " response_content_type, response_body, "
+                    " created_at, expires_at) "
+                    "VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+                    (
+                        store_args.key,
+                        store_args.user_id,
+                        store_args.request_hash,
+                        store_args.status,
+                        store_args.content_type,
+                        store_args.body,
+                        store_args.created_at,
+                        store_args.expires_at,
+                    ),
+                )
             result.conn.execute(
                 "DELETE FROM idempotency_keys WHERE expires_at <= ?",
                 (now_iso,),
