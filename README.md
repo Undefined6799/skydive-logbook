@@ -9,8 +9,7 @@
 
 <!-- Hero visual goes here once captured. ~5-10s of the Log Jump flow,
      <2 MB, ≤1200px wide, stored at docs/assets/hero.gif and referenced
-     with a relative path. See `docs/internal/session-handoffs/` for
-     capture notes. -->
+     with a relative path. -->
 
 <!--
 ![Skydive Logbook in action](docs/assets/hero.gif)

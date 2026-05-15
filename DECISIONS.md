@@ -2180,9 +2180,10 @@ start" — makes the case that the thin shape is strictly worse
 than doing the full model once. Pulling the rig manager forward
 lands one focused module instead of a placeholder that gets
 rebuilt inside a year. The scope, architectural friction, and
-phasing were analyzed in `reviews/2026-04-24-rig-manager-
-integration.md` (§2–§8) and refined with Alex in a design session
-the same day. This decision encodes the result.
+phasing were analyzed in the 2026-04-24 rig-manager integration
+review (now condensed in `docs/historical-reviews.md`) and
+refined with Alex in a design session the same day. This
+decision encodes the result.
 
 **Scope (what v0.1 equipment now means).**
 
@@ -2327,13 +2328,15 @@ becomes its own later phase or decision):
   R.2 jump.xml integration + rig-snapshot.xml; R.3 counter
   derivation + index projections; R.4 AAD rules matrix +
   wingloading + status colors; R.5 repack event write flow).
-  Detail in `reviews/2026-04-24-rig-manager-integration.md` §7.
+  Detail in the 2026-04-24 rig-manager integration review
+  (condensed in `docs/historical-reviews.md`).
 
 **Alternatives considered.**
 
 - *Ship D14 §3 as written (thin `Equipment` model), then build
-  the rig manager as v0.2.* This was the
-  `reviews/2026-04-24-rig-manager-integration.md` recommendation.
+  the rig manager as v0.2.* This was the 2026-04-24 rig-manager
+  integration review's recommendation (condensed in
+  `docs/historical-reviews.md`).
   Rejected in the 2026-04-24 design session: the thin shape
   cannot answer the user's first real question ("can I jump this
   rig today?"), and the work built on top of it would be
@@ -4999,7 +5002,7 @@ crashed one.
   ordering, doesn't replace it.
 
 **Implementation status.** Landed in the 2026-04-29 ARCH-4 slice
-(audit `reviews/2026-04-29-tech-debt-audit.html`). The
+(audit condensed in `docs/historical-reviews.md`). The
 `backend/services/_write_lock.py` module exposes
 `WRITER_LOCK = threading.RLock()` and `with_writer_lock`. 44 public
 service writes carry the decorator across `jump_service`,
@@ -5239,8 +5242,8 @@ run would miss.
 
 **References.**
 
-- 2026-04-29 tech-debt audit DEP-2 (`reviews/2026-04-29-tech-debt-audit.html`).
-- 2026-04-29 pyright rollout report (`reviews/2026-04-29-pyright-rollout.md`).
+- 2026-04-29 tech-debt audit DEP-2 and pyright rollout report
+  (both condensed in `docs/historical-reviews.md`).
 - Pyright configuration docs — https://microsoft.github.io/pyright/
 - Pyright diagnostic settings table —
   https://github.com/microsoft/pyright/blob/main/docs/configuration.md#diagnostic-settings-defaults
@@ -5332,8 +5335,8 @@ is no in-app binary replacement and no automatic update path (D14).
 - D11 — single-binary packaging via PyInstaller.
 - D14 — automatic in-app updates deferred for v0.1.
 - D48 — loopback-only deployment posture (related: no auth surface).
-- 2026-04-30 finish-open-items report
-  (`reviews/2026-04-30-finish-open-items.md`).
+- 2026-04-30 finish-open-items report (condensed in
+  `docs/historical-reviews.md`).
 - BUILD.md — per-platform build commands and signing command
   reference (used when a re-evaluation trigger fires).
 

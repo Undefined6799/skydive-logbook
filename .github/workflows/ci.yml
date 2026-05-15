@@ -84,9 +84,9 @@ jobs:
     name: vitest smoke (Node ${{ matrix.node }} on ubuntu-latest)
     runs-on: ubuntu-latest
     # Frontend smoke tests are Node-only; one Node LTS is enough to
-    # catch import-drift bugs (TEST-8 — audit 2026-04-29). The full
-    # cross-OS matrix the backend job runs would burn CI minutes
-    # without catching anything the Linux job doesn't already.
+    # catch import-drift bugs. The full cross-OS matrix the backend
+    # job runs would burn CI minutes without catching anything the
+    # Linux job doesn't already.
     strategy:
       fail-fast: false
       matrix:
