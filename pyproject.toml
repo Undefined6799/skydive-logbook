@@ -35,6 +35,13 @@ dependencies = [
     # CVE-2024-53981 (boundary parsing DoS, fixed 0.0.18),
     # CVE-2026-40347 (preamble/epilogue parsing stall, fixed 0.0.26).
     "python-multipart>=0.0.26",
+    # Slice 11: magic-bytes content-type sniffing so the stored
+    # ``content_type`` on each Attachment doesn't trust the client's
+    # multipart Content-Type header verbatim. Pure-Python, no
+    # libmagic binding required (which keeps the desktop wheel
+    # buildable across Linux / macOS / Windows without extra system
+    # packages). MIT-licensed.
+    "filetype>=1.2",
 ]
 
 [project.optional-dependencies]

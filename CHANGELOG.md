@@ -14,6 +14,20 @@ addenda; tracked as "Wave A" + "Wave B" in
 ``reviews/2026-05-15-slice-plan.md``.
 
 ### Added — backend
+- **Magic-bytes content-type sniffing** (Slice 11). The
+  multipart ``Content-Type`` header is now treated as
+  adversarial input: every uploaded file is sniffed via the new
+  ``filetype>=1.2`` dependency (pure-Python, no libmagic
+  binding) and the resolved MIME is what lands on
+  ``Attachment.content_type``. Mismatches between declared and
+  sniffed values log a structured ``upload_content_type_mismatch``
+  WARNING (the operator paper trail for "did someone try to
+  upload HTML masqueraded as a PNG?"). For text-shaped uploads
+  (CSV, log notes) the sniffer returns ``None`` and the
+  declared value is used as fallback. v0.1 has no hard
+  allow-list — a logbook is the user's own data and locking it
+  down hurts the FlySight-CSV / scanned-PDF / hand-written-note
+  cases. The allow-list lands when an inline-view endpoint does.
 - **Request + per-file size caps** (Slice 10):
   - ``Settings.max_request_bytes`` (default 5 GiB,
     env ``SKYDIVE_MAX_REQUEST_BYTES``) — enforced by the new
