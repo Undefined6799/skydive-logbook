@@ -201,10 +201,14 @@ class TestExtraHandling:
         # A caller passing a Path, UUID, or Enum shouldn't crash the
         # formatter. ``default=str`` gives a deterministic fallback so log
         # emission never raises in production.
+        # ``str(Path)`` produces backslash paths on Windows and forward
+        # slashes on POSIX — assert against the OS-specific
+        # serialization rather than baking ``/tmp/x`` into the test.
         from pathlib import Path
-        out = JsonFormatter().format(_record(path=Path("/tmp/x")))
+        path = Path("/tmp/x")
+        out = JsonFormatter().format(_record(path=path))
         body = json.loads(out)
-        assert body["path"] == "/tmp/x"
+        assert body["path"] == str(path)
 
 
 # --------------------------------------------------------------------------- #

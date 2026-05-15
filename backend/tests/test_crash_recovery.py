@@ -55,6 +55,21 @@ from backend.storage.manifest import JUMP_XML_NAME, MANIFEST_NAME, from_jump_xml
 from backend.storage.reconcile import folder_reconcile
 from backend.storage.verify import verify_logbook
 
+# SIGKILL is POSIX-only — Windows' signal module has no equivalent
+# guaranteed-uncatchable termination, and the entire crash-recovery
+# harness in this file is built around "kill -9 the child mid-write,
+# observe what the parent sees on disk." Windows would need a
+# distinct harness (TerminateProcess + a different probe of the
+# resulting state); that's a larger piece of work and not blocking
+# v0.1's loopback-only desktop posture. Skip the whole module on
+# Windows so CI stays green there; the same checks still run on
+# every macOS / Linux matrix cell, which is where the underlying
+# atomic-write semantics are tested most heavily anyway.
+pytestmark = pytest.mark.skipif(
+    sys.platform == "win32",
+    reason="crash-recovery harness uses POSIX SIGKILL; Windows needs its own",
+)
+
 # --------------------------------------------------------------------------- #
 # Fixtures + helpers
 # --------------------------------------------------------------------------- #

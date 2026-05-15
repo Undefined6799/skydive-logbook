@@ -108,7 +108,12 @@ class TestTomlOverridesDefaults:
 
     def test_logbook_root_as_string_coerces_to_path(self, isolated_config_dir, tmp_path):
         target = tmp_path / "my-logbook"
-        write_toml(isolated_config_dir, f'logbook_root = "{target}"\n')
+        # ``as_posix()`` so the path written into TOML uses forward
+        # slashes — Windows backslashes in a TOML string trigger
+        # invalid-escape errors (``\U`` looks like a Unicode escape
+        # to TOML's lexer). Pydantic + pathlib still parse the
+        # POSIX-style path correctly on Windows.
+        write_toml(isolated_config_dir, f'logbook_root = "{target.as_posix()}"\n')
         s = Settings()
         # Pydantic coerces the TOML string into a Path via the field annotation.
         assert s.logbook_root == target
@@ -212,8 +217,11 @@ class TestLoadSettings:
         # ``~`` in the file should be expanded to an absolute path
         # *after* construction, so the rest of the app never has to
         # worry about it. Point HOME at tmp_path so the expansion is
-        # deterministic across test hosts.
+        # deterministic across test hosts. On Windows ``Path.expanduser``
+        # consults ``USERPROFILE`` instead of ``HOME``; setting both
+        # keeps the test platform-portable.
         monkeypatch.setenv("HOME", str(tmp_path))
+        monkeypatch.setenv("USERPROFILE", str(tmp_path))
         write_toml(isolated_config_dir, 'logbook_root = "~/MyLogbook"\n')
         s = load_settings()
         assert s.logbook_root == tmp_path / "MyLogbook"

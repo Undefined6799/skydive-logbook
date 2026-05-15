@@ -1221,7 +1221,10 @@ def delete_jump(
     # for existence (D3) — if the index says no, it's a 404 even if
     # the filesystem has a stray folder (which would need a reindex).
     folder = _get_jump_folder(logbook_root, jump_id, user_id)
-    folder_rel = str(folder.relative_to(logbook_root))
+    # POSIX-style — log records and verify use forward slashes
+    # consistently, regardless of OS, so dashboards / greps don't
+    # need an OS-specific filter.
+    folder_rel = folder.relative_to(logbook_root).as_posix()
 
     # soft_delete (D19) handles the timestamp-prefixed move into
     # .trash/ and the uniquifier on the rare name collision.

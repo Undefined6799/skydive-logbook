@@ -51,6 +51,16 @@ from backend.services.reindex_service import reindex_from_xml
 from backend.storage.bootstrap import bootstrap_logbook
 from backend.storage.index import open_index
 
+# Same Windows constraint as test_crash_recovery.py — see the comment
+# there for the full rationale. Skip the whole module on Windows so
+# CI stays green; the harness needs a Windows-specific reimplementation
+# (TerminateProcess + a different "did the child die where we asked?"
+# probe), which is post-v0.1 work.
+pytestmark = pytest.mark.skipif(
+    sys.platform == "win32",
+    reason="crash-recovery harness uses POSIX SIGKILL; Windows needs its own",
+)
+
 # --------------------------------------------------------------------------- #
 # Fixtures + helpers
 # --------------------------------------------------------------------------- #
