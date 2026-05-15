@@ -251,7 +251,7 @@ window stops both processes.
 
 The PyInstaller spec that wraps this into a per-platform `.app` /
 `.exe` / AppImage lives at `skydive-logbook.spec`; per-platform
-binaries are still being bake-tested (see `BUILD.md`).
+binaries are still being bake-tested (see [`docs/build.md`](docs/build.md)).
 
 ### Dev mode (two terminals, hot reload)
 
@@ -327,7 +327,7 @@ The shape of the system at a glance:
 
 The full breakdown — module map, write hot path with crash semantics,
 read path, integrity model, deferred items — lives in
-[`ARCHITECTURE.md`](ARCHITECTURE.md). The reasoning behind every
+[`docs/architecture.md`](docs/architecture.md). The reasoning behind every
 load-bearing choice is in [`DECISIONS.md`](DECISIONS.md).
 
 ## Roadmap
@@ -339,7 +339,7 @@ load-bearing choice is in [`DECISIONS.md`](DECISIONS.md).
   inventory + dropzones views render against mock data pending
   remaining backend wiring.
 - ⏳ Per-platform packaged binaries (`.app` / `.exe` / AppImage) — spec
-  exists, bake-testing in progress (see `BUILD.md`).
+  exists, bake-testing in progress (see [`docs/build.md`](docs/build.md)).
 - ⏳ Code signing posture (DRAFT D52 — ad-hoc/unsigned for v0.1, signed
   before GA).
 - ⏳ Frontend modernization wave (TypeScript via `allowJs`, generated

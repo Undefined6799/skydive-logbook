@@ -39,9 +39,13 @@ skydive-logbook/
 ├── .claude/agents/              # role-scoped dev agents
 ├── README.md
 ├── DECISIONS.md                 # canonical decision record
-├── ARCHITECTURE.md              # this file
 ├── LICENSE                      # GPL-3.0
 ├── config.toml.example          # logbook_root, port, etc.
+├── docs/
+│   ├── architecture.md          # this file
+│   ├── build.md                 # per-platform build commands
+│   ├── decisions-draft.md       # in-flight D-entries
+│   └── historical-reviews.md    # archive of pre-launch audits
 ├── backend/
 │   ├── main.py                  # acquires lock, boots REST, (later) launches webview
 │   ├── config.py                # loads config.toml into a Pydantic Settings object

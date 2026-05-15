@@ -91,4 +91,4 @@ single-user, loopback-only (D48); your data stays on your machine.
   (`pytest`, `ruff check`, `pyright backend`) green on Python
   3.11 / 3.12 / 3.13 across Linux / macOS / Windows runners.
 - See `DECISIONS.md` for the full rationale behind every load-
-  bearing choice; `DECISIONS-DRAFT.md` for in-flight decisions.
+  bearing choice; `docs/decisions-draft.md` for in-flight decisions.
