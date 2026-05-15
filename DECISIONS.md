@@ -7533,3 +7533,164 @@ rejected because:
   tests.
 - ``reviews/2026-05-15-chatgpt-findings-deep-dive.md`` §8.1 —
   the failure trace that motivated this entry.
+
+---
+
+## D69 — Idempotency-Key middleware for POST routes
+
+**Date:** 2026-05-15.
+
+**Decision.** Every POST route under ``/api/v1`` honours an
+optional ``Idempotency-Key`` request header. When present, the
+key is the client's promise that a retry of the same request
+(after a network stutter, browser reload, etc.) must produce the
+same effect as the original — exactly one jump, one rig, one
+attachment, not N.
+
+The contract:
+
+- **Scope:** POST only. Other methods are idempotent at the HTTP
+  level (per RFC 9110): GET / HEAD / PUT / DELETE / OPTIONS retry
+  safely without coordination.
+- **Storage:** new SQLite table ``idempotency_keys`` in
+  ``backend/storage/index.py``. ``INDEX_SCHEMA_VERSION`` bumps
+  from 10 to 11. The table is *not* rebuildable from XML (D3
+  exception): it caches HTTP responses that never existed on
+  disk. The exception is justified because the table is
+  ephemeral (24 h TTL); losing it on a D26 schema rebuild means a
+  retry that hit during the bump window might re-execute, which
+  is the same risk a fresh install accepts.
+- **Hash strategy (compromise, NOT Stripe-style whole-body):**
+  ``sha256(method + "|" + path + "|" + user_id + "|" +
+  str(content_length) + "|" + first_4_KiB_of_body)``. The
+  components catch honest retries (same content reproduces the
+  same hash) and reject malicious or accidental reuse with a
+  different request — ``content_length`` differs OR the
+  multipart preamble (boundary string + the first form field
+  name and value) inside the first 4 KiB differs. The
+  alternative — re-hash the entire body — defeats retry
+  performance on multipart uploads (a 4 GiB video would have to
+  be bytewise-rehashed on every attempt, defeating the point of
+  idempotency in the first place).
+- **TTL:** 24 hours. Long enough to cover a user's "I'll retry
+  this tomorrow morning" pattern; short enough that a stale key
+  doesn't unexpectedly replay a year-old response. Cleanup is
+  opportunistic — every request through the middleware does a
+  cheap ``DELETE FROM idempotency_keys WHERE expires_at < now()``
+  against the ``idx_idempotency_expires`` index.
+- **Replay shape:** on a key hit AND matching hash, the
+  middleware short-circuits the application entirely and replays
+  the stored response verbatim — same HTTP status, same
+  content-type, same body bytes. The response carries the same
+  ``X-Request-Id`` the original ran with, so log correlation
+  works end-to-end.
+- **Reuse rejection:** on a key hit AND different hash, the
+  middleware returns 422 ``application/problem+json`` with
+  ``code=idempotency_key_reuse``. This is a "your client is
+  confused" signal — either two genuinely different requests
+  share an Idempotency-Key (the client must mint a new key per
+  logical operation), or the body was tampered with. Stripe
+  uses 422 for the same scenario; we match.
+
+**Why a compromise hash.** Three options were on the table:
+
+1. *Whole-body hash.* Maximally correct (the canonical
+   client-replayed-byte-for-byte case), but on multipart uploads
+   the bytes are streamed through the chunk loop and may exceed
+   memory. We could buffer to disk, but that pays a 4 GiB write
+   on every retry — defeating the whole point of the header.
+2. *Compromise: method + path + user + content_length +
+   first 4 KiB.* Catches honest retries (every byte the client
+   sends is deterministic at the multipart boundary level
+   because Pythonic multipart libraries use the same separator
+   format on every retry). Catches malicious reuse with a
+   different request — content_length almost always differs, and
+   if it doesn't, the form field name + first value in the
+   multipart preamble does. Misses two pathological cases:
+   (a) two different files that share the first 4 KiB AND the
+   exact same content_length (e.g. a hand-crafted attack); (b)
+   a client that randomises the multipart boundary string AND
+   the form field order between retries (no real HTTP library
+   does this).
+3. *JSON-only scope.* Apply idempotency only to routes that
+   accept JSON; multipart routes opt out. Smaller blast radius
+   for the hash compromise, but the LAN-retry safety the
+   middleware exists to provide is exactly the multipart-upload
+   case. Rejected — the compromise hash already covers the
+   threat model.
+
+**Consequences.**
+
+- New error code ``idempotency_key_reuse`` in
+  ``backend/api/errors.py``. Subclass of ``ValidationFailedError``
+  so 422 stays the response slot and the existing per-route
+  ``responses=ERR_CREATE`` / ``ERR_UPDATE`` already advertises
+  it; just the ``code`` discriminator differs.
+- New middleware ``IdempotencyKeyMiddleware`` in
+  ``backend/api/middleware.py``, registered next to
+  ``RequestSizeLimitMiddleware`` in ``backend/api/rest.py``.
+  Order matters: the size middleware is the outermost guard so a
+  request that is rejected at the body-size cap never hits the
+  idempotency table.
+- The middleware buffers up to 4 KiB of body messages before
+  passing the request to the application. The buffer is replayed
+  via a wrapped ``receive`` so the application sees an unchanged
+  stream. Per-message buffering means the streaming-upload posture
+  the body-size middleware established is preserved: the rest of
+  the body still flows in chunks.
+- The 24 h cleanup happens once per request (cheap O(log n) on
+  the expires index). At v0.1's scale (single-digit POSTs per
+  day on a single-user logbook) the table stays tiny; the
+  cleanup is here as a "no, the index file does not grow without
+  bound" guarantee, not because it matters at v0.1 volumes.
+- **Body cap on stored responses:** none in v0.1. POST responses
+  are small (Pydantic models serialised as JSON — a few KiB at
+  most). If a future POST returns a large response we may revisit;
+  the table's BLOB column has no schema-level limit.
+- **D3 exception:** the idempotency_keys table is NOT
+  rebuildable from XML. The D3 invariant ("SQLite is rebuildable
+  index, not the authoritative store") is preserved because the
+  table is *cache*, not *index of XML data*. Losing it on a D26
+  drop-and-reindex means at worst that retries in the 24 h
+  window after the rebuild may re-execute — which is the same
+  risk every fresh install accepts, no data loss either way.
+
+**Alternatives considered.**
+
+- *(No idempotency layer; rely on client-side retry coordination.)*
+  Status quo as of pre-Slice-12. Real-world failure mode: a
+  POST that succeeds server-side but whose response is lost
+  in transit looks identical to a POST that failed — the client
+  retries and creates a duplicate jump. The audit's main §1.4
+  named this explicitly.
+- *(Per-route token bucket / dedup window.)* Coarser; would
+  reject *every* duplicate within a window, including
+  legitimate ones (two different "go on the same lift" jumps
+  from the same user in 5 seconds). Idempotency-Key is the
+  industry-standard way to be precise about which retries are
+  the same logical operation.
+- *(Always require Idempotency-Key on POST.)* Stripe started
+  this way and walked back to "optional but recommended" because
+  legacy clients break. We match — the header is optional, and
+  POSTs without it stay best-effort just as before.
+
+**References.**
+
+- D3 — SQLite-is-an-index. This entry documents a narrow
+  exception (cache table, not data projection).
+- D8 — user_id contract; the hash includes user_id so the
+  same key under different users (when D8 becomes meaningful)
+  doesn't cross-collide.
+- D16 — RFC 9457 problem+json envelope; the reuse-rejection
+  response uses this shape.
+- D26 — schema versioning + drop-and-reindex; this entry's
+  table participates in that flow (gets dropped, re-installed
+  empty).
+- D27 — request_id correlation; the replayed response keeps
+  its original ``X-Request-Id`` so logs still correlate.
+- D48 — LAN exposure posture; this middleware is part of the
+  Wave B hardening that closes "retry duplicates a jump" as a
+  user-visible footgun before the LAN bind becomes practical.
+- ``backend/api/middleware.py:IdempotencyKeyMiddleware`` — the
+  implementation.
+- ``backend/tests/test_idempotency_key.py`` — pinning tests.

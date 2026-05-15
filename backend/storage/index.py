@@ -100,7 +100,16 @@ INDEX_FILENAME = "index.sqlite"
 #       return DropzoneSummary.starred without a per-row XML
 #       parse. INTEGER NOT NULL DEFAULT 0; rebuildable from XML
 #       via reindex_from_xml.
-INDEX_SCHEMA_VERSION: int = 10
+# v10 → v11 (D69, Slice 12): new ``idempotency_keys`` table caching
+# replayed POST responses keyed by client-supplied
+# ``Idempotency-Key`` header. Unlike every other table this one is
+# NOT rebuildable from XML (D69 explicitly carves out the D3
+# exception): the bytes it stores are HTTP responses that never
+# existed on disk. The 24 h TTL plus opportunistic cleanup keeps
+# the table bounded; the schema rebuild on a downgrade safely
+# drops the cache (a retry after the bump window may re-execute,
+# which is the same risk a fresh install accepts).
+INDEX_SCHEMA_VERSION: int = 11
 
 _SCHEMA = """
 PRAGMA foreign_keys = ON;
@@ -249,6 +258,29 @@ CREATE TABLE IF NOT EXISTS people (
 -- for ``ORDER BY name COLLATE NOCASE`` without a runtime sort.
 CREATE INDEX IF NOT EXISTS idx_people_name
     ON people(name COLLATE NOCASE);
+
+-- v11 (D69, Slice 12): cache table for the Idempotency-Key
+-- middleware. Each row stores a complete HTTP response that the
+-- middleware replays verbatim when the same key reappears within
+-- the 24 h TTL with matching content (per D69's compromise hash).
+-- This table is the ONE explicitly carved-out D3 exception: it
+-- holds response bytes, not a projection of XML data. The 24 h
+-- TTL plus opportunistic ``DELETE WHERE expires_at < now()`` per
+-- request keeps the row count bounded; D26 drop-and-reindex just
+-- recreates it empty, which is acceptable (a retry that hits the
+-- bump window may re-execute, same risk as a fresh install).
+CREATE TABLE IF NOT EXISTS idempotency_keys (
+    key                    TEXT PRIMARY KEY,         -- client-supplied
+    user_id                TEXT NOT NULL,            -- D8 scope
+    request_hash           TEXT NOT NULL,            -- D69 compromise hash hex
+    response_status        INTEGER NOT NULL,         -- e.g. 201
+    response_content_type  TEXT,                     -- nullable per HTTP
+    response_body          BLOB NOT NULL,            -- bytes replayed verbatim
+    created_at             TEXT NOT NULL,            -- UTC ISO 8601 (D17)
+    expires_at             TEXT NOT NULL             -- created_at + 24 h
+);
+CREATE INDEX IF NOT EXISTS idx_idempotency_expires
+    ON idempotency_keys(expires_at);
 """
 
 
