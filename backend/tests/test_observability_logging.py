@@ -10,6 +10,7 @@ from __future__ import annotations
 import io
 import json
 import logging
+from pathlib import Path
 from uuid import UUID, uuid4
 
 import pytest
@@ -233,7 +234,9 @@ class TestConfigureLogging:
             access.disabled = saved_disabled
 
     def test_installs_exactly_one_handler(self):
-        configure_logging("INFO")
+        # ``file_sink=False`` so the assertion is about the stderr handler
+        # alone — the file-sink behaviour gets its own test below.
+        configure_logging("INFO", file_sink=False)
         root = logging.getLogger()
         assert len(root.handlers) == 1
 
@@ -241,21 +244,111 @@ class TestConfigureLogging:
         # Tests often exercise startup multiple times; duplicate handlers
         # would double every log line. ``configure_logging`` replaces
         # rather than stacks.
-        configure_logging("INFO")
-        configure_logging("DEBUG")
+        configure_logging("INFO", file_sink=False)
+        configure_logging("DEBUG", file_sink=False)
         root = logging.getLogger()
         assert len(root.handlers) == 1
         assert root.level == logging.DEBUG
 
     def test_handler_uses_json_formatter(self):
-        configure_logging("INFO")
+        configure_logging("INFO", file_sink=False)
         (handler,) = logging.getLogger().handlers
         assert isinstance(handler.formatter, JsonFormatter)
+
+
+class TestFileSink:
+    """The rotating file sink lands logs at
+    ``user_config_dir() / 'logs' / 'skydive-logbook.log'`` so a
+    Finder-launched .app has somewhere to write debug output. Tests
+    monkeypatch ``user_config_dir`` to redirect at a tmp directory."""
+
+    @pytest.fixture(autouse=True)
+    def _restore_root(self):
+        root = logging.getLogger()
+        saved_handlers = list(root.handlers)
+        saved_level = root.level
+        access = logging.getLogger("uvicorn.access")
+        saved_disabled = access.disabled
+        try:
+            yield
+        finally:
+            root.handlers = saved_handlers
+            root.level = saved_level
+            access.disabled = saved_disabled
+
+    def test_file_sink_creates_log_file(self, monkeypatch, tmp_path):
+        from backend.observability import logging as obs_logging
+
+        monkeypatch.setattr(
+            obs_logging, "user_config_dir", lambda: tmp_path / "config"
+        )
+        configure_logging("INFO", file_sink=True)
+        logging.getLogger("test").info("hello")
+        for h in logging.getLogger().handlers:
+            h.flush()
+        log_file = tmp_path / "config" / "logs" / "skydive-logbook.log"
+        assert log_file.is_file()
+        assert "hello" in log_file.read_text(encoding="utf-8")
+
+    def test_file_sink_installs_a_second_handler(self, monkeypatch, tmp_path):
+        from backend.observability import logging as obs_logging
+
+        monkeypatch.setattr(
+            obs_logging, "user_config_dir", lambda: tmp_path / "config"
+        )
+        configure_logging("INFO", file_sink=True)
+        # stderr + rotating-file = 2 handlers.
+        assert len(logging.getLogger().handlers) == 2
+
+    def test_file_sink_disabled_returns_to_one_handler(self):
+        configure_logging("INFO", file_sink=False)
+        assert len(logging.getLogger().handlers) == 1
+
+    def test_log_file_path_returns_active_path(self, monkeypatch, tmp_path):
+        from backend.observability import logging as obs_logging
+
+        monkeypatch.setattr(
+            obs_logging, "user_config_dir", lambda: tmp_path / "config"
+        )
+        configure_logging("INFO", file_sink=True)
+        from backend.observability.logging import log_file_path
+        assert log_file_path() == tmp_path / "config" / "logs" / "skydive-logbook.log"
+
+    def test_log_file_path_is_none_when_sink_off(self):
+        configure_logging("INFO", file_sink=False)
+        from backend.observability.logging import log_file_path
+        assert log_file_path() is None
+
+    def test_unwritable_log_dir_does_not_kill_startup(
+        self, monkeypatch, tmp_path
+    ):
+        # Simulate a read-only / permission-denied logs directory: the
+        # mkdir raises OSError. configure_logging must catch it,
+        # surface a warning, and leave only the stderr handler.
+        from backend.observability import logging as obs_logging
+
+        bad_dir = tmp_path / "blocked"
+        monkeypatch.setattr(obs_logging, "user_config_dir", lambda: bad_dir)
+        original_mkdir = Path.mkdir
+
+        def fake_mkdir(self, *a, **kw):
+            if self == bad_dir / "logs":
+                raise OSError("simulated read-only filesystem")
+            return original_mkdir(self, *a, **kw)
+
+        monkeypatch.setattr(Path, "mkdir", fake_mkdir)
+        configure_logging("INFO", file_sink=True)
+        # stderr handler still installed; file handler skipped.
+        assert len(logging.getLogger().handlers) == 1
+        from backend.observability.logging import log_file_path
+        assert log_file_path() is None
 
     def test_emitted_records_are_valid_json_lines(self):
         # Swap the handler's stream for an in-memory buffer so we can
         # read back what configure_logging's formatter produced.
-        configure_logging("INFO")
+        # ``file_sink=False`` keeps this test focused on stderr handler
+        # behaviour without writing a stray file under user_config_dir.
+        configure_logging("INFO", file_sink=False)
         (handler,) = logging.getLogger().handlers
         buf = io.StringIO()
         handler.stream = buf
@@ -272,14 +365,14 @@ class TestConfigureLogging:
         assert body["request_id"] is None
 
     def test_silences_uvicorn_access(self):
-        configure_logging("INFO")
+        configure_logging("INFO", file_sink=False)
         assert logging.getLogger("uvicorn.access").disabled is True
 
     def test_leaves_uvicorn_error_propagating(self):
         # ``uvicorn.error`` is not silenced — it's the startup/shutdown
         # channel. Default stdlib state: no handlers, propagate=True. We
         # must not have flipped that.
-        configure_logging("INFO")
+        configure_logging("INFO", file_sink=False)
         err = logging.getLogger("uvicorn.error")
         assert err.disabled is False
         assert err.propagate is True

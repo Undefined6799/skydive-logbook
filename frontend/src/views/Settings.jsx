@@ -384,14 +384,47 @@ function TrashSection() {
 }
 
 function DiagnosticsSection() {
+  // The reveal-* buttons go through the pywebview JS API to open
+  // Finder / Explorer at the right place. Outside the desktop app
+  // (Vite dev mode) the API isn't injected — surface a friendly
+  // message instead of silently doing nothing. ``error`` carries
+  // either the JS API's own ``{ok:false, error}`` payload (e.g.
+  // "logs folder does not exist") or the dev-mode fallback message.
+  const [error, setError] = useState(null);
+
+  async function reveal(kind) {
+    setError(null);
+    const api = pywebviewApi();
+    if (!api) {
+      setError(`${kind === 'logs' ? 'Logs folder' : 'Config file'} can only be opened from the desktop app.`);
+      return;
+    }
+    const fn = kind === 'logs' ? api.reveal_logs_folder : api.reveal_config_file;
+    if (typeof fn !== 'function') {
+      setError(`This build of the desktop app doesn't expose ${kind === 'logs' ? 'reveal_logs_folder' : 'reveal_config_file'} yet.`);
+      return;
+    }
+    try {
+      const result = await fn();
+      if (result && result.ok === false) {
+        setError(result.error || 'Could not reveal the folder.');
+      }
+    } catch (e) {
+      setError(e?.message || 'Could not reveal the folder.');
+    }
+  }
+
   return (
     <Card className="p-5 mb-2.5">
       <SectionLabel>DIAGNOSTICS</SectionLabel>
       <div className="flex gap-2 flex-wrap">
-        <GhostButton>Reveal logs folder</GhostButton>
-        <GhostButton>Reveal config file</GhostButton>
+        <GhostButton onClick={() => reveal('logs')}>Reveal logs folder</GhostButton>
+        <GhostButton onClick={() => reveal('config')}>Reveal config file</GhostButton>
         <GhostButton>Copy diagnostic info</GhostButton>
       </div>
+      {error && (
+        <div className="mt-3 text-[11px] text-neutral-400">{error}</div>
+      )}
     </Card>
   );
 }

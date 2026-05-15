@@ -349,6 +349,57 @@ class JsApi:
         _open_path(root)
         return {"ok": True, "path": str(root)}
 
+    def reveal_logs_folder(self) -> dict:
+        """Open the app's logs directory in the OS file manager.
+
+        Lives at ``user_config_dir() / 'logs'`` per D27 and D20 — the
+        app-config dir, NOT inside the logbook folder (logs are
+        operational artifacts, not user data; D2 says the logbook
+        folder stays self-describing).
+
+        Returns ``{ok: False, error: ...}`` if the directory doesn't
+        exist (no logs were ever written, e.g. ``configure_logging``
+        was called with ``file_sink=False``). The Settings UI surfaces
+        the error inline rather than opening a missing folder.
+        """
+        from backend.observability.logging import log_dir
+        target = log_dir()
+        if not target.is_dir():
+            return {
+                "ok": False,
+                "error": (
+                    f"logs folder does not exist at {target} — "
+                    "no log file has been written this session"
+                ),
+            }
+        _open_path(target)
+        return {"ok": True, "path": str(target)}
+
+    def reveal_config_file(self) -> dict:
+        """Open the app's ``config.toml`` (D20) in the OS file manager.
+
+        Reveals the *folder* containing the file (so the file is
+        visible / selectable) rather than opening it directly — the
+        contents may be edited but most users just want to see where
+        it lives. Falls back to revealing the parent config dir if
+        the file hasn't been written yet."""
+        from backend.config import config_file_path, user_config_dir
+        target = config_file_path()
+        if target.is_file():
+            _open_path(target.parent)
+            return {"ok": True, "path": str(target)}
+        config_dir = user_config_dir()
+        if not config_dir.is_dir():
+            return {
+                "ok": False,
+                "error": (
+                    f"no config file at {target}; "
+                    "the app writes one on first save"
+                ),
+            }
+        _open_path(config_dir)
+        return {"ok": True, "path": str(config_dir)}
+
     def reveal_jump_folder(self, jump_id: str) -> dict:
         """Open the jump's folder in the OS file manager.
 
@@ -587,10 +638,15 @@ def main() -> int:
         )
         return 1
 
-    logging.basicConfig(
-        level=logging.INFO,
-        format="%(asctime)s %(levelname)s %(name)s: %(message)s",
-    )
+    # Wire the D27 JSON formatter + rotating file sink. The desktop
+    # launcher owns startup in packaged mode (backend.main.main is
+    # NOT called — uvicorn boots from a thread inside this process),
+    # so without this call the .app would have no log file at all,
+    # only stderr that's invisible to a Finder-launched binary.
+    # ``file_sink=True`` writes to ``user_config_dir() / 'logs' /
+    # 'skydive-logbook.log'`` (D20 / D27).
+    from backend.observability.logging import configure_logging
+    configure_logging(level="INFO", file_sink=True)
 
     project_root = _project_root()
     frontend_dir = project_root / "frontend"

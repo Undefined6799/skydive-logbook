@@ -34,14 +34,18 @@ from __future__ import annotations
 
 import json
 import logging
+import logging.handlers
 import sys
 import time
 from contextvars import ContextVar
 from datetime import UTC, datetime
+from pathlib import Path
 from typing import Any
 from uuid import UUID, uuid4
 
 from starlette.types import ASGIApp, Message, Receive, Scope, Send
+
+from ..config import user_config_dir
 
 # --------------------------------------------------------------------------- #
 # Contextvar
@@ -135,14 +139,55 @@ class JsonFormatter(logging.Formatter):
 # Logger configuration
 # --------------------------------------------------------------------------- #
 
-def configure_logging(level: str = "INFO") -> None:
+# Per-process bookkeeping for the file sink. The path is computed once
+# the first time ``configure_logging`` runs with file-sink enabled and
+# exposed via ``log_file_path()`` for the JsApi reveal-folder action.
+_log_file_path: Path | None = None
+
+
+def log_dir() -> Path:
+    """Resolve the on-disk directory the rotating log handler writes to.
+
+    Sits under :func:`backend.config.user_config_dir` per D20 — the
+    app-level config directory (``~/Library/Application Support/skydive-logbook``
+    on macOS, ``%APPDATA%\\skydive-logbook`` on Windows,
+    ``~/.config/skydive-logbook`` on Linux). Logs are app-level debug
+    output, NOT user data, so they do NOT live inside ``logbook_root``
+    — putting them there would violate D2's "anyone with a text editor
+    and an XSD validator can read and verify the logbook folder" rule
+    by polluting it with operational artifacts."""
+    return user_config_dir() / "logs"
+
+
+def log_file_path() -> Path | None:
+    """Return the active log file path, or ``None`` if no file sink ran.
+
+    Set by ``configure_logging(file_sink=True)``; consumed by JsApi's
+    ``reveal_logs_folder`` so Settings → *Reveal logs folder* opens
+    Finder at the right place. ``None`` while running tests or when the
+    file sink is explicitly disabled — callers should fall back to
+    "no log file in this run" UX rather than guessing the path."""
+    return _log_file_path
+
+
+def configure_logging(level: str = "INFO", file_sink: bool = True) -> None:
     """Install ``JsonFormatter`` on the root logger; silence ``uvicorn.access``.
 
-    Idempotent: calling twice replaces the previous handler rather than
+    Idempotent: calling twice replaces previous handlers rather than
     stacking duplicates. This matters for tests that exercise startup.
 
-    The single root handler writes to stderr. A file sink is intentionally
-    out of scope for v0.1 (D27: add additively when packaging lands).
+    Two handlers, both feeding ``JsonFormatter``:
+
+      * ``StreamHandler`` to stderr — visible when the binary is launched
+        from a terminal, lost when launched via Finder double-click on
+        macOS / Explorer on Windows (no console attached). Always on.
+      * ``RotatingFileHandler`` to ``log_dir() / "skydive-logbook.log"``
+        — covers the double-click case so users can hand a log file to a
+        bug report instead of a screen recording. Capped at 10 MB × 3
+        rotations so a long-running session can't fill the disk.
+
+    Pass ``file_sink=False`` to opt out (tests do this; the file would
+    accumulate noise across runs and isn't the surface under test).
 
     ``uvicorn.access`` is disabled here belt-and-braces; ``main.py`` also
     passes ``access_log=False`` to ``uvicorn.run`` so uvicorn never emits
@@ -153,6 +198,8 @@ def configure_logging(level: str = "INFO") -> None:
     carry no handlers and propagate to root, so startup/shutdown notices
     flow through our JSON formatter automatically.
     """
+    global _log_file_path
+
     root = logging.getLogger()
 
     # Drop any handler a prior call installed. We can't just compare
@@ -161,9 +208,44 @@ def configure_logging(level: str = "INFO") -> None:
     for h in list(root.handlers):
         root.removeHandler(h)
 
-    handler = logging.StreamHandler(sys.stderr)
-    handler.setFormatter(JsonFormatter())
-    root.addHandler(handler)
+    formatter = JsonFormatter()
+
+    stream = logging.StreamHandler(sys.stderr)
+    stream.setFormatter(formatter)
+    root.addHandler(stream)
+
+    if file_sink:
+        # Computed outside the try so the ``except`` block always has a
+        # path to put in the warning even when ``mkdir`` itself raises.
+        target_dir = log_dir()
+        try:
+            target_dir.mkdir(parents=True, exist_ok=True)
+            target = target_dir / "skydive-logbook.log"
+            # 10 MB × 3 rotations = ~30 MB ceiling per install. Big enough
+            # for a long debugging session, small enough that a forgotten
+            # background process can't fill the disk.
+            file_handler = logging.handlers.RotatingFileHandler(
+                target,
+                maxBytes=10 * 1024 * 1024,
+                backupCount=3,
+                encoding="utf-8",
+            )
+            file_handler.setFormatter(formatter)
+            root.addHandler(file_handler)
+            _log_file_path = target
+        except OSError as exc:
+            # Disk full, permission denied, read-only filesystem, etc.
+            # The stderr handler is already installed; surface a single
+            # warning and keep going rather than killing app startup
+            # because the log directory is unwritable.
+            _log_file_path = None
+            root.warning(
+                "log_file_sink_unavailable",
+                extra={"path": str(target_dir), "error": str(exc)},
+            )
+    else:
+        _log_file_path = None
+
     root.setLevel(level.upper())
 
     # Silence uvicorn's access logger. D27 replaces it with our own
