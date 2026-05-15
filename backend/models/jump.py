@@ -308,3 +308,18 @@ class JumpUpdate(BaseModel):
     landing_distance_m: float | None = Field(default=None, ge=0)
     packed_by: UUID | None = None
     group_members: list[UUID] = []
+
+    # The four fields below appear on the ``GET /jumps/{id}`` response
+    # but are server-controlled — clients can't actually set them.
+    # ``extra="forbid"`` would normally reject them on a naive
+    # GET-mutate-PUT round-trip (the body returned by GET cannot be
+    # POSTed back without surgery). Declaring them here as ignored
+    # optional fields preserves the strict-unknown rejection for
+    # genuine typos while letting third-party tooling round-trip
+    # cleanly. ``update_jump`` discards the payload values and
+    # reuses the on-disk ones (id, attachments, signature,
+    # created_at) plus a freshly stamped ``updated_at``.
+    attachments: list[Attachment] = []
+    signature: str | None = None
+    created_at: str | None = None
+    updated_at: str | None = None
