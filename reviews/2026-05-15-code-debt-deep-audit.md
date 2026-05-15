@@ -785,4 +785,254 @@ work. The rest gates v0.2 cleanly.
 
 ---
 
+## Appendix A — Verification of an external (ChatGPT) review
+
+A separate code review by an LLM (ChatGPT) was supplied alongside this
+audit. I verified each of its eight specific suspicions against
+current code. Results:
+
+### A.1 [P1] **`App.jsx` sets `activeTab = 'profile'` but no `profile` view exists — CONFIRMED, REAL BUG**
+
+`frontend/src/App.jsx:80`:
+
+```jsx
+function handleResume() {
+  ...
+  setActiveTab('profile');
+}
+```
+
+But `VIEWS` (line 16-23) defines only six keys: `dashboard`, `jumps`,
+`myrig`, `inventory`, `dropzones`, `settings`. There is no
+`profile` key. The fallback at line 30 (`const View = VIEWS[activeTab]
+|| Dashboard`) silently maps the unknown tab to `Dashboard`. The
+`Sidebar` doesn't have a `profile` tab either.
+
+Reading the surrounding code: the comment at lines 26-28 says *"Identity
+moved into Settings"* — so this is **dead code left over from a
+rename**. When the user clicks "Resume setup" in the
+`ResumeBanner`, the handler tries to navigate them to the Profile tab
+and instead silently lands them on the Dashboard. The wizard overlay
+then appears on top, so the user notices nothing — but if they
+dismiss the wizard without finishing, they're on a tab they didn't
+choose.
+
+**Fix:** one-line change. Either remove the `setActiveTab('profile')`
+call entirely (the wizard overlay is what matters) or change it to
+`'settings'` since that's where Identity now lives. ~5 minutes.
+
+This finding was missed by my main audit and by the 2026-05-14
+audit. **Worth its own commit.**
+
+### A.2 [P1] **Backend leaks raw exception type/messages in 500 responses — CONFIRMED**
+
+`backend/api/rest.py:184`:
+
+```python
+detail = f"{type(exc).__name__}: {exc}"
+response = error_response(
+    InternalServerError(detail),
+    request_id=request_id,
+    instance=request.url.path,
+)
+```
+
+The code itself acknowledges this is intentional for v0.1 (lines
+178-183):
+
+> v0.1 is a single-user desktop app bound to loopback (D20). Surface
+> the exception type and message in the response body so the user can
+> read it in the modal/error banner without tailing logs. When v0.1
+> grows beyond loopback (multi-user, remote API), this branch tightens
+> to honor D16's safety concern about leaking internal state.
+
+The deferral is correct *for the v0.1 desktop scope*. For any of the
+user's stated longer-term contexts ("serious desktop application,
+potentially multi-user later"), the leak is real:
+
+- A `KeyError` raised from a SQL helper exposes the column name.
+- A `FileNotFoundError` exposes the absolute path of the missing file
+  — and the path contains `logbook_root`, which contains the user's
+  filesystem layout (home directory name, mount points).
+- A library exception (e.g. `lxml.etree.XMLSyntaxError`) exposes
+  internal byte offsets and stack-frame implementation details.
+
+**Fix:** gate the verbose `detail` on `Settings.expose_internal_errors`
+(or equivalent), default `True` only when bound to `127.0.0.1`,
+`False` otherwise. The full trace already goes to the structured log
+via `exc_info=`. ~30 minutes including the setting and the test
+that asserts a generic body when the flag is off. Cite as a new
+D-entry; this is the "tightening" the existing comment already
+foresees.
+
+My main audit's §6.2 frontend finding (silent `.catch` swallowing)
+intersects this: the SPA happily swallows the leak, but a `curl`
+client or a future third-party tool sees it.
+
+### A.3 [confirmed] **`jump_service.py` ~1000+ LOC — CONFIRMED**
+
+Actual count: 1252 LOC. Covered in my §4.4 (and in the 2026-05-14
+audit §3.2). The proposed per-operation-family split
+(crud/attachment/files) stands. **No new action.**
+
+### A.4 [P2] **File upload validation incomplete — CONFIRMED on content sniffing**
+
+I covered the *size cap* gap in §1.5 (no per-request total). What
+ChatGPT also flags is **content validation**:
+
+- `frontend/src/api.js` sends `Content-Type` straight from the
+  browser's `File.type`, which is user-influenced.
+- `backend/api/jumps.py:179, 315` passes `f.content_type` (the
+  multipart-declared MIME) through to `Attachment.content_type`
+  unmodified.
+- `backend/services/jump_service.py:683` uses `mimetypes.guess_type(name)`
+  (extension-based) for D41 track-files.
+
+There is **no content sniffing** (`libmagic` / `python-magic` /
+`filetype` package). An attacker who renames `evil.html` to
+`harmless.png` and uploads it will get back an `Attachment` with
+`content_type="image/png"`. If a future viewer in the SPA streams
+that file with the stored content-type as the response header, it's
+an XSS vector.
+
+**Fix shape:** when D14's "view attachment inline" lands, the GET
+endpoint must either (a) re-sniff the bytes via `libmagic` before
+serving and reject mismatches, or (b) set
+`Content-Disposition: attachment` and `Content-Type:
+application/octet-stream` to force download for any non-allowlisted
+type. Document as a D-entry. **For v0.1 there is no such viewer
+yet**, so the gap is latent.
+
+Add to my §1.5 sequence step: when implementing the body-size
+middleware, also add the allow-list for MIME types per route.
+
+### A.5 [P2] **Frontend still reads from `mock.js` — CONFIRMED, narrow**
+
+```
+$ grep -rE "import.*mock" frontend/src/
+frontend/src/modals/ComponentModal.jsx:4: import { unassignedComponents } from '../mock';
+```
+
+Only one remaining importer. `frontend/src/mock.js` is 351 LOC; most
+of it is dead. The single import `unassignedComponents` is consumed
+in `ComponentModal.jsx` — this is the modal for picking a component
+when assembling a rig, and it appears to fall back to mocked
+unassigned-component data instead of querying the real
+`/api/v1/{aads,reserves,mains,containers}` lists with
+`assigned_rig_id IS NULL`.
+
+**Fix:** wire `ComponentModal` to the real endpoints; delete `mock.js`
+in the same commit. ~2 hours. The deletion is the bigger win — `mock.js`
+remaining in the tree invites future drift back into prototype state.
+
+### A.6 [P2] **Multipart upload lacks strong limits — CONFIRMED**
+
+Covered in §1.5 (no `MAX_REQUEST_BYTES`). ChatGPT also implicitly
+flags the per-file limit gap. `python-multipart` floor is patched
+against CVEs (`pyproject.toml:33-37`), but the upload pipeline has
+no caller-overridable per-file size limit either. **No new action
+beyond §1.5**; expand the fix to include per-file as well as
+per-request caps.
+
+### A.7 [P2] **`CustomEvent` usage doesn't scale — CONFIRMED, valid smell**
+
+```
+$ grep -rE "CustomEvent" frontend/src/
+frontend/src/units.js:38-39        ALTITUDE_CHANGE_EVENT
+frontend/src/App.jsx:57-110         ONBOARDING_RESUME_EVENT, ONBOARDING_STATE_CHANGED_EVENT
+frontend/src/views/Settings.jsx:58  ONBOARDING_RESUME_EVENT
+frontend/src/views/Identity.jsx:72  ONBOARDING_STATE_CHANGED_EVENT
+frontend/src/views/onboarding/ResumeBanner.jsx:54, 85
+```
+
+Three separate `window`-level event channels. Pros: avoids the
+prop-drilling that the App.jsx comment (lines 57-63) calls out. Cons:
+
+- Untyped strings as channel ids. A typo in one site silently breaks
+  the wiring.
+- No React DevTools visibility — the event traffic doesn't show up
+  in the component-tree inspector.
+- Tests must mock `window` event listeners; failure modes (a
+  listener that was attached on mount but never on a re-mount after
+  HMR) are hard to debug.
+- The pattern is **incompatible with future React Strict Mode**
+  (which double-fires effects in dev — each mount adds a listener,
+  unmount removes it, the double-fire produces two listeners briefly).
+
+**Fix:** introduce a tiny Context — `OnboardingProvider` exposing
+`{ state, refresh, requestResume }` — and a `UnitsProvider` for
+`ALTITUDE_CHANGE_EVENT`. Same number of consumer sites, no
+window-level traffic. ~3 hours. Compounds with my §6.x decomposition
+work, since `LogJumpModal` is the deepest tree the providers need
+to reach.
+
+### A.8 [confirmed-with-context] **Crash consistency XML+SQLite+manifests — PARTIALLY COVERED**
+
+ChatGPT names this as a category to "analyze carefully". My main
+audit covers:
+
+- The D37 rig partial-create gap (§2.2) — the most substantial
+  hole.
+- The `jumper_migration.py` crash-test gap (§2.3).
+- The `open_index` silent-downgrade behavior (§2.1).
+- The `track_files` / `add_attachments` / `delete_attachment` write
+  ordering — these were *not* flagged by my pass because the
+  `jump_service.py` code clearly documents D25 ordering in line
+  comments and the integrity invariants hold. But they would
+  benefit from a property-style test that performs an interrupted
+  write of every multi-step operation and asserts `verify` reports
+  the expected recoverable state.
+
+**Concrete addition:** a test matrix like
+`test_partial_write_recovery.py` that for each of {`create_jump`,
+`update_jump`, `add_attachments`, `delete_attachment`,
+`track_files`, `create_rig`, `update_rig`, `delete_rig`} mocks an
+exception after each disk operation and asserts (a) `verify`
+detects exactly the expected issue, (b) the next read via the
+public service does not crash, (c) `reindex_from_xml` converges to
+a clean index. This is the test suite that gates "serious user
+data" claims.
+
+### Summary of new items from this review
+
+| # | Source | Severity | New? |
+|---|---|---|---|
+| A.1 | `setActiveTab('profile')` dead-tab bug | **P1** | **YES — both audits missed it** |
+| A.2 | Raw exception leak in 500 body | **P1** (for multi-user posture) | **YES — I read the comment but didn't elevate** |
+| A.4 | No content-type sniffing on uploads | **P2** | YES (extends my §1.5) |
+| A.5 | `mock.js` + `ComponentModal` still imports from it | **P2** | YES |
+| A.7 | Global-bus `CustomEvent` pattern | **P2** | YES |
+| A.8 | Crash-recovery test matrix | **P2** | extends my §5.x |
+
+### Items from ChatGPT's review I do not endorse
+
+- **"jump_service.py appears excessively large (~1000+ LOC)"** —
+  factual but framed as a bug; it's debt, already named, with a
+  clear split plan. No new action.
+- **"Multipart upload flow may lack strong limits and validation"**
+  — partially correct, but the existing CVE-floor pinning and the
+  D4 filename sanitization are real defenses. The gap is real but
+  narrower than the framing implies.
+
+### Updated execution sequence — additions
+
+Inserted alongside the existing 14-step sequence:
+
+- **Step 1.5 (P1, 5 min)** Fix `App.jsx:80` (A.1) — either drop the
+  `setActiveTab('profile')` call or change to `'settings'`. Zero
+  risk, one line.
+- **Step 5.5 (P1, 30 min)** Gate raw-exception leak (A.2) on a
+  `Settings.expose_internal_errors` flag default-`False` outside
+  loopback. New D-entry.
+- **Step 9.5 (P2, 3 hr)** Replace `CustomEvent`-based onboarding bus
+  with a `<OnboardingProvider>` (A.7).
+- **Step 10.5 (P2, 2 hr)** Wire `ComponentModal` to real APIs;
+  delete `mock.js` (A.5).
+- **Step 12.5 (P2, sliced)** When implementing §1.5 body-size
+  middleware, add content-type sniffing + allow-list (A.4).
+- **Step 14.5 (P2, 1 day)** Build the partial-write recovery test
+  matrix (A.8). Belongs in `backend/tests/test_partial_write_recovery.py`.
+
+---
+
 *— end —*
