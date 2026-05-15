@@ -10,10 +10,26 @@ on the major / minor / patch number.
 
 Post-`0.1.0-beta.1` audit / hardening cohort. Driven from
 ``reviews/2026-05-15-code-debt-deep-audit.md`` and its three
-addenda; tracked as "Wave A" in
+addenda; tracked as "Wave A" + "Wave B" in
 ``reviews/2026-05-15-slice-plan.md``.
 
 ### Added — backend
+- **Uniform error envelope**: every 4xx and 5xx on the wire is now
+  ``application/problem+json`` per RFC 9457. Adds two new exception
+  handlers (Slice 5):
+  - ``RequestValidationError`` → 422 with ``code=validation_failed``
+    and per-field ``errors[]`` carrying RFC 6901 pointers. Replaces
+    FastAPI's default ``{"detail": [...]}`` envelope.
+  - Starlette ``HTTPException`` (404 unknown path, 405 method not
+    allowed, 413/415 future-use) → problem+json with a curated
+    status → ``code`` map. 404 reuses the typed ``NotFoundError``
+    so the same ``code=not_found`` covers both the routing miss
+    and a service-layer not-found.
+- **OpenAPI alignment test** (Slice 6): five tests pin that the
+  hand-authored ``PROBLEM_DETAILS_SCHEMA`` covers every Pydantic
+  ``ProblemDetails`` field and vice versa; the schema's ``required``
+  list matches the model; ``FieldError`` matches the nested
+  ``errors.items`` shape. Drift catches at PR time.
 - **D67**: ``Settings.expose_internal_errors: bool | None``
   controls whether ``application/problem+json`` 500 bodies
   surface ``f"{type(exc).__name__}: {exc}"`` as ``detail``.
