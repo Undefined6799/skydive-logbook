@@ -64,6 +64,7 @@ from ..services import jumper_credential_service, jumper_service
 from ..services.jumper_service import Upload
 from .deps import get_logbook_root, get_settings, get_user_id
 from .openapi import ERR_CREATE, ERR_DELETE, ERR_LIST, ERR_READ, ERR_UPDATE
+from .uploads import trusted_content_type
 
 router = APIRouter(prefix="/api/v1/jumpers", tags=["jumpers"])
 
@@ -287,7 +288,9 @@ def add_attachment_route(
 ) -> Jumper:
     upload = Upload(
         filename=file.filename or "",
-        content_type=file.content_type,
+        # Slice 11: trust the sniffed MIME, not the multipart
+        # Content-Type header.
+        content_type=trusted_content_type(file),
         chunks=_upload_chunks(file, max_bytes=settings.max_file_bytes),
     )
     return jumper_service.add_attachment_to_jumper(

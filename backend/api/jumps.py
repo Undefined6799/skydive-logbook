@@ -46,6 +46,7 @@ from ..services import jump_service
 from ..services.jump_service import Upload
 from .deps import get_logbook_root, get_settings, get_user_id
 from .openapi import ERR_CREATE, ERR_DELETE, ERR_LIST, ERR_READ, ERR_UPDATE
+from .uploads import trusted_content_type
 
 
 class FolderFileResponse(BaseModel):
@@ -208,7 +209,12 @@ def create_jump_route(
             # with a clean field-pointer error — keep the mapping
             # identity-preserving here rather than inventing a default.
             filename=f.filename or "",
-            content_type=f.content_type,
+            # ``trusted_content_type`` sniffs the magic bytes (Slice
+            # 11) and falls back to the declared header when the
+            # bytes aren't a recognised binary format (CSVs, text,
+            # etc). The declared multipart Content-Type is never
+            # stored verbatim because clients control it.
+            content_type=trusted_content_type(f),
             chunks=_upload_chunks(f, max_bytes=settings.max_file_bytes),
         )
         for f in (files or [])
@@ -355,7 +361,7 @@ def add_attachments_route(
     uploads = [
         Upload(
             filename=f.filename or "",
-            content_type=f.content_type,
+            content_type=trusted_content_type(f),
             chunks=_upload_chunks(f, max_bytes=settings.max_file_bytes),
         )
         for f in (files or [])
