@@ -31,7 +31,7 @@ import sys
 from pathlib import Path
 from typing import Any
 
-from pydantic import Field
+from pydantic import Field, model_validator
 from pydantic_settings import (
     BaseSettings,
     PydanticBaseSettingsSource,
@@ -89,6 +89,46 @@ class Settings(BaseSettings):
     # 503 ``update_check_disabled`` and the UI is expected to hide the
     # button. Env: ``SKYDIVE_UPDATE_CHECK_REPO``.
     update_check_repo: str | None = Field(default=None)
+
+    # Whether unhandled-exception responses include the exception
+    # type and message in the 500 problem+json body. The full
+    # traceback always goes to the structured log via ``exc_info``
+    # regardless; this flag controls only the wire-visible ``detail``
+    # field.
+    #
+    # ``None`` (default) means "auto" — the model_validator below
+    # resolves it to ``True`` when ``bind_host`` is loopback, ``False``
+    # otherwise. A v0.1 desktop user on 127.0.0.1 sees useful error
+    # detail in modals; any non-loopback bind (D48 LAN exposure, future
+    # server mode) defaults safe: a generic message on the wire, full
+    # detail only in the log. The user can override either way by
+    # setting the flag explicitly.
+    #
+    # Env: ``SKYDIVE_EXPOSE_INTERNAL_ERRORS``.
+    expose_internal_errors: bool | None = Field(default=None)
+
+    # Hosts that are unambiguously "this machine, not the network."
+    # Used by the auto-resolve for ``expose_internal_errors`` and by
+    # ``main.py`` for the non-loopback boot warning. Kept as a class-
+    # level constant so the two consumers share the same set.
+    _LOOPBACK_HOSTS = frozenset({"127.0.0.1", "localhost", "::1"})
+
+    @model_validator(mode="after")
+    def _resolve_expose_internal_errors(self) -> Settings:
+        """Auto-resolve ``expose_internal_errors`` from ``bind_host``.
+
+        Auto rule: on loopback, default ``True`` (desktop UX); on any
+        non-loopback bind, default ``False`` (no exception detail
+        leaks onto the network). An explicit value via env / TOML /
+        init overrides the auto rule.
+        """
+        if self.expose_internal_errors is None:
+            self.expose_internal_errors = self.bind_host in self._LOOPBACK_HOSTS
+        return self
+
+    def is_loopback_bind(self) -> bool:
+        """Whether ``bind_host`` is a loopback address."""
+        return self.bind_host in self._LOOPBACK_HOSTS
 
     @classmethod
     def settings_customise_sources(

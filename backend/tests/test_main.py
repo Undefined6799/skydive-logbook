@@ -197,7 +197,7 @@ class TestSchemaRebuild:
         index_path = isolated_env / INDEX_FILENAME
         conn = sqlite3.connect(str(index_path))
         try:
-            conn.execute("PRAGMA user_version = 99")
+            conn.execute("PRAGMA user_version = 1")
         finally:
             conn.close()
 
@@ -214,7 +214,11 @@ class TestSchemaRebuild:
         record = rebuilt[0]
         assert record.levelname == "WARNING"
         assert record.name == "backend.main"
-        assert record.previous_version == 99
+        # We forge user_version=1 above so the rebuild branch fires
+        # (older-on-disk is the legitimate D26 drop-and-reindex path;
+        # newer-on-disk now refuses startup per the Slice-8 amendment
+        # at index.py:344-355). 1 is below any shipped schema version.
+        assert record.previous_version == 1
         assert record.current_version == INDEX_SCHEMA_VERSION
 
     def test_rebuild_runs_reindex_synchronously(
@@ -227,7 +231,7 @@ class TestSchemaRebuild:
         main_module.main()
         conn = sqlite3.connect(str(isolated_env / INDEX_FILENAME))
         try:
-            conn.execute("PRAGMA user_version = 99")
+            conn.execute("PRAGMA user_version = 1")
         finally:
             conn.close()
 
@@ -261,7 +265,7 @@ class TestSchemaRebuild:
         main_module.main()
         conn = sqlite3.connect(str(isolated_env / INDEX_FILENAME))
         try:
-            conn.execute("PRAGMA user_version = 99")
+            conn.execute("PRAGMA user_version = 1")
         finally:
             conn.close()
 
@@ -287,7 +291,7 @@ class TestSchemaRebuild:
         main_module.main()  # establish a clean index
         conn = sqlite3.connect(str(isolated_env / INDEX_FILENAME))
         try:
-            conn.execute("PRAGMA user_version = 99")
+            conn.execute("PRAGMA user_version = 1")
         finally:
             conn.close()
 
@@ -319,7 +323,7 @@ class TestSchemaRebuild:
         main_module.main()  # establish a clean index
         conn = sqlite3.connect(str(isolated_env / INDEX_FILENAME))
         try:
-            conn.execute("PRAGMA user_version = 99")
+            conn.execute("PRAGMA user_version = 1")
         finally:
             conn.close()
 
