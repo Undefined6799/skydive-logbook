@@ -1,5 +1,6 @@
-import React from 'react';
+import React, { useEffect, useState } from 'react';
 import { BookOpen, Layers, Boxes, MapPin, LayoutGrid, Settings as SettingsIcon } from 'lucide-react';
+import { listJumpers } from './api';
 
 const NAV = [
   { id: 'dashboard', icon: LayoutGrid, label: 'Dashboard' },
@@ -9,7 +10,48 @@ const NAV = [
   { id: 'dropzones', icon: MapPin, label: 'Dropzones' },
 ];
 
+// Greeting derived from the local clock + the jumper's name when
+// they've completed onboarding. Empty string until the fetch
+// resolves so the header doesn't flicker between "Welcome" and
+// "Good morning, X" on every mount. Pre-D65 this was hardcoded
+// to "Good morning, Alex" — wrong for every other installer.
+function timeGreeting() {
+  const h = new Date().getHours();
+  if (h < 5) return 'Welcome back';
+  if (h < 12) return 'Good morning';
+  if (h < 18) return 'Good afternoon';
+  return 'Good evening';
+}
+
 export default function Sidebar({ activeTab, setActiveTab }) {
+  const [jumperName, setJumperName] = useState(null);
+
+  // TODO (OB.5+): Profile.jsx also fires ``listJumpers({ limit: 1 })``
+  // on every mount, so this is a second hit on the same endpoint with
+  // the same result. v0.1 (local backend, single jumper) absorbs the
+  // duplicate; the canonical fix is to lift the jumper into App.jsx
+  // and thread it as a prop. Not done yet because App.jsx already
+  // owns the wizard fetch, and adding the jumper fetch on top makes
+  // the prop-drilling for OB.2's per-step forms more involved than
+  // the slice budget allows.
+  useEffect(() => {
+    let cancelled = false;
+    listJumpers({ limit: 1 })
+      .then((jumpers) => {
+        if (cancelled) return;
+        const j = jumpers && jumpers[0];
+        setJumperName(j?.name?.trim() || '');
+      })
+      .catch(() => { if (!cancelled) setJumperName(''); });
+    return () => { cancelled = true; };
+  }, []);
+
+  const greeting = jumperName === null
+    ? ' '  // nbsp keeps line-height stable while loading
+    : jumperName
+      ? `${timeGreeting()}, ${jumperName}`
+      : timeGreeting();
+
   return (
     <aside
       className="w-56 flex flex-col h-screen sticky top-0"
@@ -26,7 +68,7 @@ export default function Sidebar({ activeTab, setActiveTab }) {
           className="text-[15px] font-medium mt-1 tracking-tight"
           style={{ color: 'var(--text)' }}
         >
-          Good morning, Alex
+          {greeting}
         </div>
       </div>
 

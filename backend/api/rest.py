@@ -30,6 +30,7 @@ from .errors import (
 from .jumpers import router as jumpers_router
 from .jumps import router as jumps_router
 from .mains import router as mains_router
+from .onboarding import router as onboarding_router
 from .openapi import custom_openapi
 from .ops import router as ops_router
 from .people import router as people_router
@@ -226,6 +227,9 @@ def create_app(*, mount_frontend: bool = True) -> FastAPI:
     # and services.reindex_service — backend logic was already there
     # for the CLIs, this just exposes the same to the desktop UI).
     app.include_router(ops_router)
+    # First-run wizard state (D64). Owns the sentinel; the per-step
+    # creates reuse the existing entity routers above.
+    app.include_router(onboarding_router)
 
     # Mount the built React frontend at /, so the same uvicorn process
     # serves the API and the SPA. Catch-all mount goes AFTER api routes

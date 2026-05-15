@@ -898,3 +898,33 @@ export async function deleteJumperMedical(jumperId, medicalId) {
   );
   return handle(res);
 }
+
+
+// --------------------------------------------------------------------- //
+// Onboarding wizard (D64)
+// --------------------------------------------------------------------- //
+//
+// The SPA reads `getOnboardingState` on every App mount to decide
+// between (wizard) / (Profile resumption banner) / (no UI). The
+// per-step forms reuse the existing entity endpoints above
+// (createDropzone, createContainer, etc.); this module owns only
+// the sentinel.
+
+// GET /api/v1/onboarding
+// Returns { completed, completed_at, status, has_jumper, has_dropzones, has_rigs }.
+export async function getOnboardingState() {
+  const res = await fetch(`${API_BASE}/api/v1/onboarding`, noStoreInit);
+  return handle(res);
+}
+
+// POST /api/v1/onboarding/complete
+// Body: { status: 'finished' | 'skipped' }. Stamps the sentinel and
+// returns the updated state.
+export async function completeOnboarding(status) {
+  const res = await fetch(`${API_BASE}/api/v1/onboarding/complete`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ status }),
+  });
+  return handle(res);
+}

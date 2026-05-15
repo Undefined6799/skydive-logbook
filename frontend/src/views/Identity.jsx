@@ -8,6 +8,7 @@ import {
   listJumpers, createJumper, ApiError,
 } from '../api';
 import IdentityEditFull from './IdentityEditFull';
+import { ONBOARDING_STATE_CHANGED_EVENT } from './onboarding/ResumeBanner';
 
 // Identity manager — single-jumper per D33 (v0.1; multi-jumper deferred).
 //
@@ -59,6 +60,20 @@ export default function IdentityManager() {
       });
     return () => { cancelled = true; };
   }, [reloadKey]);
+
+  // D65: refetch the jumper when the onboarding wizard closes —
+  // it may have created a jumper via its own JumperStep, in which
+  // case the stale ``listJumpers === []`` would still show the
+  // legacy OnboardingForm without this listener.
+  useEffect(() => {
+    function handleStateChange() {
+      setReloadKey((k) => k + 1);
+    }
+    window.addEventListener(ONBOARDING_STATE_CHANGED_EVENT, handleStateChange);
+    return () => {
+      window.removeEventListener(ONBOARDING_STATE_CHANGED_EVENT, handleStateChange);
+    };
+  }, []);
 
   function handleSaved() {
     setReloadKey((k) => k + 1);

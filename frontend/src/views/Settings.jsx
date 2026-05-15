@@ -6,11 +6,13 @@ import {
   AlertTriangle,
   Download,
   ExternalLink,
+  Sparkles,
 } from 'lucide-react';
 import { runVerify, runReindex, checkForUpdates, ApiError } from '../api';
 import { StatusDot, GhostButton, Card, SectionLabel } from '../primitives';
 import { useAltitudeUnit } from '../units';
 import IdentityManager from './Identity';
+import { ONBOARDING_RESUME_EVENT } from './onboarding/ResumeBanner';
 
 // Bridge to the pywebview JS API. Returns null when running in the
 // browser (Vite dev mode) where pywebview is absent — callers fall
@@ -33,12 +35,41 @@ export default function Settings() {
       <IdentitySection />
       <LogbookSection />
       <UnitsSection />
+      <OnboardingSection />
       <VerifySection />
       <TrashSection />
       <DiagnosticsSection />
       <UpdatesSection />
       <AboutSection />
     </div>
+  );
+}
+
+// D65: surface the first-run wizard from Settings so a user with
+// an existing logbook can step through it (the auto-open path
+// targets empty logbooks only). Clicking the button fires the
+// same window event the Dashboard resume banner dispatches;
+// App.jsx flips ``resumeOverride`` and the wizard mounts. The
+// user can either walk forward (steps where data already exists
+// render AlreadyDoneStep) or skip out — either way the sentinel
+// gets stamped on dismiss.
+function OnboardingSection() {
+  function handleRunWizard() {
+    window.dispatchEvent(new CustomEvent(ONBOARDING_RESUME_EVENT));
+  }
+  return (
+    <Card className="p-5 mb-2.5">
+      <SectionLabel>FIRST-RUN WIZARD</SectionLabel>
+      <div className="text-[12px] text-neutral-400 mb-3 leading-relaxed">
+        Walk through the guided setup again. Useful for revisiting
+        what's there, or running the wizard end-to-end on a logbook
+        that was set up before this feature shipped.
+      </div>
+      <GhostButton onClick={handleRunWizard}>
+        <Sparkles className="w-3.5 h-3.5" />
+        Re-run setup wizard
+      </GhostButton>
+    </Card>
   );
 }
 

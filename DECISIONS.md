@@ -6853,3 +6853,189 @@ slice per CLAUDE.md §3.
   https://sparkle-project.org/documentation/ed-signatures/
 - `cryptography` Ed25519 docs —
   https://cryptography.io/en/latest/hazmat/primitives/asymmetric/ed25519/
+
+
+## D65 — Guided first-run onboarding wizard with a sentinel completion file
+
+**Decision.** A new jumper who opens a fresh logbook is walked through
+a multi-step in-app wizard that creates their first dropzone, their
+inventory components (container, main, reserve, AAD), and their first
+rig — leaving them ready to log a jump. The wizard renders in the
+React SPA (not the launcher's pywebview welcome HTML); it reuses the
+existing service-layer + REST surface (POST ``/dropzones``,
+``/containers``, ``/mains``, ``/reserves``, ``/aads``, ``/rigs``) and
+the existing form modals where shape allows. The launcher's job
+narrows back to "pick a folder, run bootstrap, hand off to the SPA".
+
+Completion is recorded as a sentinel file ``.onboarding_completed``
+at the logbook root. Its presence dismisses the wizard on every
+subsequent launch; its content is a small JSON document that records
+``completed_at`` (D17 timestamp) and ``status`` (``"finished"`` when
+the user walked every step, ``"skipped"`` when they dismissed). The
+content is informational — only the presence of the file is
+load-bearing.
+
+**Why.** The bootstrap path before this entry produced a useable but
+opaque experience: the launcher dropped the user on the React app's
+Profile tab with empty rigs/dropzones/inventory lists and zero
+guidance on what to do first. A new jumper who didn't read the
+README had no obvious path to "log a jump" because the LogJumpModal
+needs at least one rig, and a rig needs all four components, and the
+wear math wants a dropzone. The wizard fills that gap by chaining
+the existing create flows so the user reaches "ready to log" in one
+linear pass.
+
+A sentinel file is the smallest viable persistence layer for the
+"dismiss forever" state. The alternatives:
+
+- A new ``settings.xml`` inside the logbook folder. The "right" home
+  for per-logbook app state, but D20 deferred it ("config.toml lives
+  in user config dir; per-logbook settings deferred"). Introducing
+  it for a single flag would be over-spec; we'd need an XSD and
+  versioning. Revisit if a second per-logbook flag arrives.
+- A row in the SQLite index. The index is rebuildable from XML
+  (D3) — onboarding state would have to also live in XML to satisfy
+  D3, which collapses back to the settings.xml path above.
+- A bit on the existing manifest. The manifest is the SHA256SUMS
+  integrity surface; reusing it for unrelated app state conflates
+  concerns and would force a manifest-version bump.
+
+The sentinel approach is the minimum spec: a single hidden file,
+atomic-written via the existing ``atomic_write`` primitive (D10),
+read by a single service function. When more per-logbook flags
+arrive, the migration is a one-time read of the sentinel and a
+write into a new settings file.
+
+**Wizard shape.** Seven linear steps inside the React SPA (one
+welcome frame + six form steps), in order:
+
+  1. **Welcome.** Sets context: "We'll set up your home DZ, your
+     gear, and your rig." Two affordances: "Get started" advances
+     to step 2, "Skip for now" writes ``status="skipped"`` and
+     dismisses the wizard.
+  2. **Home dropzone.** Reuses the existing ``DropzoneModal`` form.
+     The first DZ in a fresh logbook is auto-starred by
+     ``dropzone_service.create_dropzone`` (D60 transition 1) — the
+     wizard does nothing special on top.
+  3. **Container.** All ``ContainerCreate`` fields exposed; only
+     ``status`` is required (the rest are optional per D34).
+  4. **Main canopy.** Required: ``size_sqft`` + ``default_environment``.
+     Optional: identification + lineset. Lineset is shown but
+     skippable so a brand-new jumper isn't blocked on knowing their
+     line type (D38 "onboarding" path: deferred lineset is legal).
+  5. **Reserve canopy.** All ``ReserveCreate`` fields exposed.
+  6. **AAD.** All ``AADCreate`` fields exposed.
+  7. **Build your rig.** Pre-fills the four ``current_*_id`` from
+     the components created in steps 3–6, asks for ``nickname`` +
+     ``jurisdiction``. Disabled if any component step was skipped
+     (D37 invariant: a rig needs all four).
+
+Every step has Back / Continue / Skip. Skip on any step records
+``status="skipped"`` and dismisses. Finish on step 7 records
+``status="finished"`` and dismisses. Both end states write the
+sentinel; the wizard reads it on next launch and stays hidden.
+
+**Resumption.** When the sentinel exists but the logbook is missing
+pieces (user skipped mid-wizard, or created data outside the wizard
+and then re-opened the app), Profile renders a small "Finish setup"
+banner pointing at the next missing step. The banner is dismissable
+per session (in-memory) so a deliberate skipper isn't nagged on
+every render, but re-appears next launch — matching the "sentinel
+is final; banner is a nudge" split. This is the resumption
+affordance promised in D14's "v0.1 UX" envelope and unblocks the
+"I skipped but want to come back later" workflow without forcing
+an in-XML state machine.
+
+**Trigger.** On every React mount, the SPA calls
+``GET /api/v1/onboarding``. The endpoint returns:
+
+```
+{
+  "completed": <bool>,                       # sentinel exists
+  "completed_at": "<D17 timestamp>" | null,  # parsed from sentinel
+  "status": "finished" | "skipped" | null,   # parsed from sentinel
+  "has_jumper": <bool>,                      # listJumpers > 0
+  "has_dropzones": <bool>,                   # COUNT(*) FROM dropzones > 0
+  "has_rigs": <bool>                         # rigs/ has any folder
+}
+```
+
+The SPA renders the wizard when ``!completed`` and at least one of
+the three ``has_*`` flags is false. The wizard never appears when
+``completed`` is true.
+
+**Consequences.**
+
+- New service module ``backend/services/onboarding_service.py``
+  owns sentinel read/write and the three "has_*" counts. The
+  sentinel is written through ``atomic_write`` (D10) and validated
+  as JSON on read — a malformed sentinel logs at WARNING and is
+  treated as "presence only, status unknown".
+- New REST endpoints under ``/api/v1/onboarding``:
+  ``GET`` (state) and ``POST /complete`` (body ``{"status": …}``,
+  writes sentinel and returns the updated state).
+- New React component ``OnboardingWizard.jsx`` mounted at App.jsx's
+  root. Renders nothing until the status fetch resolves; renders
+  the wizard or null after. A "Finish setup" banner lives in
+  ``Profile.jsx`` for the dismissed-but-incomplete state.
+- The launcher's hardcoded welcome HTML loses the personal greeting
+  ("Good morning, Alex" — leaked from a dev session). The welcome
+  step now lives in the SPA where it can be themed alongside the
+  rest of the app and reuses the existing component library.
+- No XSD, schema, or manifest bumps. The sentinel is plain JSON
+  and lives outside the on-disk record set that ``verify`` walks.
+  ``verify`` ignores the sentinel (dot-prefix, like ``.trash/``).
+- The wizard does NOT inflate scope: every step is a thin shell
+  around an existing service function. No new fields, no new
+  invariants. v0.1 scope (D14, as superseded by D33) is unchanged.
+
+**Re-evaluation triggers.** This decision flips when any of:
+
+- A second per-logbook flag arrives (e.g. "tour mode dismissed",
+  "imported from another logbook"). At two flags, migrate the
+  sentinel into a proper ``settings.xml`` with an XSD and bump
+  D20 to formalise the per-logbook config home.
+- Multi-jumper (D33 deferred): the wizard becomes per-jumper rather
+  than per-logbook, which moves the sentinel into the jumper's XML.
+- The wizard grows branches (recreational vs tandem vs AFF-student
+  paths). Linear shape can stay; the branching belongs in the SPA,
+  not in the sentinel.
+
+**Alternatives considered.**
+
+- *(No wizard; rely on Profile's existing ``OnboardingForm`` and let
+  the user discover dropzone/inventory/rig via the sidebar.)* The
+  status quo. Rejected for the "log a jump" cliff above — a new
+  jumper hits the LogJumpModal, sees it demands a rig, and has no
+  obvious path forward.
+- *(All-in-launcher wizard, HTML/JS in launch_desktop.py.)* Rejected
+  because it duplicates the form layer that already lives in React
+  (DropzoneModal, AddComponentModal, AddRigModal) and forces the
+  launcher to grow a UI framework. The launcher's job is "boot
+  fast, hand off"; the SPA owns user-facing UI.
+- *(Inline empty-state cards on each tab — no modal wizard.)* Less
+  intrusive but fragments the linear "set up everything you need"
+  story across five tabs; the user has to know which tabs to visit
+  in which order. The wizard solves the sequencing problem in one
+  place. The Profile banner is the inline-card fallback for the
+  resumption case.
+- *(``settings.xml`` from day one.)* Over-spec for a single flag —
+  see the sentinel rationale above. Revisit when a second flag
+  arrives.
+
+**References.**
+
+- D10 — atomic_write is the only persistence primitive.
+- D14 — v0.1 scope (foundation for "ready to log a jump").
+- D20 — config.toml lives in user config dir; per-logbook
+  ``settings.xml`` deferred.
+- D33 — rig manager + the "all four components" invariant the
+  wizard chains.
+- D37 — every component in zero or one rigs at any time
+  (constrains step 7).
+- D38 — used-gear onboarding path; lineset can be deferred.
+- D44 — dropzone first-class entity.
+- D60 — first DZ auto-stars; the wizard does nothing special on top.
+- 2026-05-14 conversation that scoped this slice (OB.1 — wizard
+  framework + Welcome step + sentinel mechanism; OB.2 through OB.5
+  add the per-step forms in subsequent slices).
