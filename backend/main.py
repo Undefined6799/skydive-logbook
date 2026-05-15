@@ -189,7 +189,8 @@ def main() -> int:
         # inventory's wear-count projections via the same code path
         # the regular service writes use.
         try:
-            folder_reconcile_rigs(settings.logbook_root)
+            # v0.1 single-user (D8): boot scope is always "default".
+            folder_reconcile_rigs(settings.logbook_root, "default")
         except Exception as exc:
             # A reconcile failure should not block startup — the
             # logbook is still readable, just with the same

@@ -115,7 +115,10 @@ class RigReconcileReport:
 
 
 @with_writer_lock
-def folder_reconcile_rigs(logbook_root: Path) -> RigReconcileReport:
+def folder_reconcile_rigs(
+    logbook_root: Path,
+    user_id: str,
+) -> RigReconcileReport:
     """Heal D37 bidirectional refs between rigs and inventory components.
 
     Per D70: the rig.xml is the authoritative statement of intent. For
@@ -133,6 +136,9 @@ def folder_reconcile_rigs(logbook_root: Path) -> RigReconcileReport:
       logbook_root: the path that contains ``rigs/`` and
         ``inventory/``. Both subtrees are walked; missing subdirs are
         treated as empty (the no-rigs-yet case is healthy).
+      user_id: D8 scope. v0.1 is always ``"default"`` (boot site in
+        main.py passes that literally); kept as a parameter so the
+        multi-user future doesn't need to refactor every call site.
 
     Returns:
       :class:`RigReconcileReport` with counts and any conflict
@@ -148,7 +154,7 @@ def folder_reconcile_rigs(logbook_root: Path) -> RigReconcileReport:
     # without rig.xml is treated as if the rig didn't exist — its
     # half-bound components (if any) will be detected in step 2 as
     # pointing at a rig that doesn't reference them, and cleared.
-    rigs = rig_service.list_rigs(logbook_root, "default")
+    rigs = rig_service.list_rigs(logbook_root, user_id)
 
     expected: dict[UUID, UUID] = {}
     conflicts: list[str] = []
@@ -187,7 +193,7 @@ def folder_reconcile_rigs(logbook_root: Path) -> RigReconcileReport:
 
     for entry in _COMPONENT_ENTRIES:
         try:
-            components = entry.lister(logbook_root, "default")
+            components = entry.lister(logbook_root, user_id)
         except (FileNotFoundError, NotFoundError):
             # Inventory subfolder missing entirely — pre-bootstrap or
             # an empty fleet. Healthy state; nothing to walk.
@@ -279,6 +285,14 @@ def _components_involved_in_conflicts(
     binding (so a conflict doesn't poison the rest of the run); this
     helper recovers the component ids that need to be excluded from
     the step-2 repair walk because reconcile can't decide.
+
+    Why re-walk: ``expected`` overwrites no key, so the conflicting
+    component's id is in ``expected`` (with the first-seen rig) and
+    is also in the ``conflicts`` log line — but neither structure
+    preserves *all* the rig ids that claim it. A re-walk
+    reconstructs the full mapping in one pass. The cost is
+    O(rigs × 4) and runs only when ``conflicts`` is non-empty (the
+    healthy path returns the empty set immediately).
     """
     if not conflicts:
         return set()

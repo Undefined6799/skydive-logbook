@@ -332,8 +332,13 @@ class IdempotencyKeyMiddleware:
         )
         request_hash = hashlib.sha256(h_input).hexdigest()
 
-        # Step 2: look up the key.
-        now = _utc_now_iso()
+        # Step 2: look up the key. Take ``now_dt`` once and reuse it
+        # for both the lookup-comparison string and the ``expires_at``
+        # math below — calling ``datetime.now`` twice would let the
+        # clock advance between them and (in pathological cases) yield
+        # an ``expires_at`` shorter than the TTL.
+        now_dt = _dt.datetime.now(_dt.UTC)
+        now = _iso_format(now_dt)
         cached = self._lookup(idem_key, now)
         if cached is not None:
             stored_hash, status, ct, body, _expires_at = cached
@@ -417,9 +422,8 @@ class IdempotencyKeyMiddleware:
                         content_type = None
                     break
             body_bytes = b"".join(captured_body_chunks)
-            expires_at = _utc_iso(
-                _parse_utc_iso(now)
-                + _dt.timedelta(seconds=_IDEMPOTENCY_TTL_SECONDS)
+            expires_at = _iso_format(
+                now_dt + _dt.timedelta(seconds=_IDEMPOTENCY_TTL_SECONDS),
             )
             self._store(
                 key=idem_key,
@@ -536,9 +540,12 @@ class IdempotencyKeyMiddleware:
     ) -> None:
         headers: list[tuple[bytes, bytes]] = []
         if content_type:
-            headers.append(
-                (b"content-type", content_type.encode("ascii", errors="replace"))
-            )
+            # The store path only sets ``content_type`` when the
+            # original Content-Type header decoded cleanly as ASCII
+            # (see the lookup in ``capturing_send``), so encoding back
+            # to ASCII is lossless by construction. Plain ``.encode``
+            # is enough.
+            headers.append((b"content-type", content_type.encode("ascii")))
         headers.append((b"content-length", str(len(body)).encode("ascii")))
         headers.append((b"idempotent-replayed", b"true"))
         await send({
@@ -584,23 +591,16 @@ class IdempotencyKeyMiddleware:
         })
 
 
-def _utc_now_iso() -> str:
-    """Current UTC time in the project's canonical D17 format."""
-    now = _dt.datetime.now(_dt.UTC)
-    return now.strftime("%Y-%m-%dT%H:%M:%S.") + f"{now.microsecond // 1000:03d}Z"
+def _iso_format(dt: _dt.datetime) -> str:
+    """Format ``dt`` as a D17 / D32 canonical UTC timestamp.
 
-
-def _utc_iso(dt: _dt.datetime) -> str:
+    Same shape as :func:`backend.services._timestamps.now_utc_iso` so
+    string comparisons against ``expires_at`` in the DB are
+    byte-identical. The helper accepts an arbitrary datetime because
+    we need to format ``now + TTL`` (the expiry stamp) as well as
+    "now", and ``_timestamps.now_utc_iso`` only formats the current
+    moment. Keep the two implementations aligned — a drift would
+    break the DB-side ``WHERE expires_at > now`` comparison silently.
+    """
     aware = dt.astimezone(_dt.UTC)
-    return aware.strftime("%Y-%m-%dT%H:%M:%S.") + f"{aware.microsecond // 1000:03d}Z"
-
-
-def _parse_utc_iso(s: str) -> _dt.datetime:
-    """Parse the project's D17 canonical timestamp back to a UTC datetime."""
-    # The format is YYYY-MM-DDTHH:MM:SS.fffZ — drop the trailing 'Z'
-    # and parse with %f (microseconds; the trailing zeros pad fine).
-    if s.endswith("Z"):
-        s = s[:-1]
-    return _dt.datetime.strptime(s, "%Y-%m-%dT%H:%M:%S.%f").replace(
-        tzinfo=_dt.UTC,
-    )
+    return aware.isoformat(timespec="milliseconds").replace("+00:00", "Z")

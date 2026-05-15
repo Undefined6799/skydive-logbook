@@ -424,7 +424,7 @@ class TestDeleteRigCascadeCrash:
 
         # Boot reconcile sees rig.xml referencing all four and
         # forward-completes: main + reserve get re-bound.
-        report = rig_reconcile_service.folder_reconcile_rigs(bootstrapped_root)
+        report = rig_reconcile_service.folder_reconcile_rigs(bootstrapped_root, "default")
         assert report.components_forward_completed == 2
 
         for getter, key in (
@@ -538,6 +538,18 @@ class TestTrackFilesSizeHashRace:
         # original 100 bytes. ``with`` statements look up __exit__
         # on the class, not the instance, so a proxy class is
         # required (per-instance __exit__ assignment doesn't take).
+        #
+        # SCOPE NOTE: this proxy only delegates ``read``,
+        # ``__enter__``, and ``__exit__`` — the methods the current
+        # ``track_files`` hash loop uses (``hashlib.sha256().update``
+        # consumes the ``f.read(chunk_size)`` lambda iterator). A
+        # future refactor that switches to ``f.readinto``, iteration,
+        # or ``read1`` would silently bypass the race injection (the
+        # proxy would fall back to the real file object whose
+        # ``__exit__`` we did not wrap). If this test ever stops
+        # producing the expected mismatched-size attachment, check
+        # ``backend/services/jump_service.py:track_files`` for a
+        # method-call change before suspecting the proxy is broken.
         orig_open = Path.open
         triggered = {"n": 0}
 

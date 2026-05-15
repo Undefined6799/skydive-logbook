@@ -100,7 +100,7 @@ def _build_rig_payload(components: dict[str, UUID], **overrides) -> RigCreate:
 
 class TestCleanBootIsANoOp:
     def test_empty_logbook(self, bootstrapped_root: Path):
-        report = rig_reconcile_service.folder_reconcile_rigs(bootstrapped_root)
+        report = rig_reconcile_service.folder_reconcile_rigs(bootstrapped_root, "default")
         assert report.rigs_scanned == 0
         assert report.components_scanned == 0
         assert report.components_forward_completed == 0
@@ -121,7 +121,7 @@ class TestCleanBootIsANoOp:
         )
         before = main_path.read_bytes()
 
-        report = rig_reconcile_service.folder_reconcile_rigs(bootstrapped_root)
+        report = rig_reconcile_service.folder_reconcile_rigs(bootstrapped_root, "default")
         assert report.rigs_scanned == 1
         assert report.components_scanned == 4
         assert report.components_forward_completed == 0
@@ -136,8 +136,8 @@ class TestCleanBootIsANoOp:
         rig_service.create_rig(
             bootstrapped_root, "default", _build_rig_payload(components)
         )
-        rig_reconcile_service.folder_reconcile_rigs(bootstrapped_root)
-        report = rig_reconcile_service.folder_reconcile_rigs(bootstrapped_root)
+        rig_reconcile_service.folder_reconcile_rigs(bootstrapped_root, "default")
+        report = rig_reconcile_service.folder_reconcile_rigs(bootstrapped_root, "default")
         assert report.components_forward_completed == 0
         assert report.components_cleared == 0
 
@@ -201,7 +201,7 @@ class TestPartialCreateRecovery:
         monkeypatch.undo()
 
         # Run the reconcile.
-        report = rig_reconcile_service.folder_reconcile_rigs(bootstrapped_root)
+        report = rig_reconcile_service.folder_reconcile_rigs(bootstrapped_root, "default")
 
         # Three components needed forward-completion (reserve, AAD,
         # container); the main was already pointing at the rig.
@@ -244,8 +244,8 @@ class TestPartialCreateRecovery:
             )
         monkeypatch.undo()
 
-        rig_reconcile_service.folder_reconcile_rigs(bootstrapped_root)
-        second = rig_reconcile_service.folder_reconcile_rigs(bootstrapped_root)
+        rig_reconcile_service.folder_reconcile_rigs(bootstrapped_root, "default")
+        second = rig_reconcile_service.folder_reconcile_rigs(bootstrapped_root, "default")
         assert second.components_forward_completed == 0
         assert second.components_cleared == 0
 
@@ -269,7 +269,7 @@ class TestOrphanCleanup:
         )
         assert m.assigned_rig_id == ghost_rig_id
 
-        report = rig_reconcile_service.folder_reconcile_rigs(bootstrapped_root)
+        report = rig_reconcile_service.folder_reconcile_rigs(bootstrapped_root, "default")
         assert report.components_cleared == 1
         assert report.components_forward_completed == 0
 
@@ -298,7 +298,7 @@ class TestOrphanCleanup:
             bootstrapped_root, unrelated_main.id, rig_a.id
         )
 
-        report = rig_reconcile_service.folder_reconcile_rigs(bootstrapped_root)
+        report = rig_reconcile_service.folder_reconcile_rigs(bootstrapped_root, "default")
         # rig_a's four components are healthy; only the unrelated
         # main has an orphan assignment.
         assert report.components_cleared == 1
@@ -349,7 +349,7 @@ class TestConflictDetection:
         rig_b_xml_path.write_bytes(rig_to_bytes(tampered))
 
         with caplog.at_level("WARNING", logger="backend.services.rig_reconcile"):
-            report = rig_reconcile_service.folder_reconcile_rigs(bootstrapped_root)
+            report = rig_reconcile_service.folder_reconcile_rigs(bootstrapped_root, "default")
 
         # The conflict was surfaced.
         assert len(report.conflicts) == 1
@@ -389,5 +389,5 @@ class TestInvalidRigFoldersAreSkipped:
         stub.mkdir(parents=True)
 
         # Should not raise; should report zero rigs scanned.
-        report = rig_reconcile_service.folder_reconcile_rigs(bootstrapped_root)
+        report = rig_reconcile_service.folder_reconcile_rigs(bootstrapped_root, "default")
         assert report.rigs_scanned == 0
