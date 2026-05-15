@@ -189,7 +189,13 @@ def test_error_responses_reference_problem_details_schema(
     components = spec.get("components", {})
     responses = components.get("responses", {})
     assert responses, "expected components.responses with reusable error envelopes"
-    expected = {"NotFound", "Conflict", "ValidationFailed", "IntegrityError", "Internal"}
+    # ``IntegrityError`` was removed in the post-Slice-4 cleanup —
+    # its wire shape is structurally identical to ``Internal`` (both
+    # 500 problem+json), and per-``code`` discrimination is what
+    # consumers branch on at runtime. Both ``code`` values are in
+    # the ProblemDetails schema's ``code.examples`` so the spec
+    # still documents the runtime distinction.
+    expected = {"NotFound", "Conflict", "ValidationFailed", "Internal"}
     assert expected <= set(responses), (
         f"missing reusable response components: {expected - set(responses)}"
     )
@@ -201,3 +207,32 @@ def test_error_responses_reference_problem_details_schema(
         assert schema.get("$ref") == _PROBLEM_REF, (
             f"{name} response does not $ref ProblemDetails: {schema}"
         )
+
+
+def test_ref_responses_have_no_sibling_keys(spec: dict[str, Any]) -> None:
+    """A ``$ref`` response object must have no sibling keys per the
+    OpenAPI 3.0 reference-object semantics.
+
+    FastAPI's ``get_openapi`` walks ``responses=`` dicts and stamps a
+    default ``description`` matching the HTTP status code's human
+    name (``"Not Found"`` for 404, etc.). That's harmless on a
+    normal inline response but illegal when combined with ``$ref``:
+    sibling keys are ignored by the JSON Reference spec and SDK
+    generators / Swagger UI handle the case inconsistently.
+    ``custom_openapi`` post-processes the schema to strip sibling
+    keys — this test pins that against regression.
+    """
+    bad: list[tuple[str, str, str, list[str]]] = []
+    for path, item in spec.get("paths", {}).items():
+        for method in ("get", "post", "put", "patch", "delete"):
+            op = item.get(method)
+            if not op:
+                continue
+            for code, body in op.get("responses", {}).items():
+                if not isinstance(body, dict):
+                    continue
+                if "$ref" in body:
+                    extras = [k for k in body if k != "$ref"]
+                    if extras:
+                        bad.append((method.upper(), path, code, extras))
+    assert not bad, f"$ref responses with sibling keys: {bad}"

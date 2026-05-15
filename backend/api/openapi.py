@@ -77,7 +77,13 @@ PROBLEM_DETAILS_SCHEMA: dict[str, Any] = {
         "code": {
             "type": "string",
             "description": "Stable machine-readable identifier for this problem type. Branch on this, not `title`.",
-            "examples": ["not_found", "conflict", "validation_failed", "integrity_error"],
+            "examples": [
+                "not_found",
+                "conflict",
+                "validation_failed",
+                "internal_error",
+                "integrity_error",
+            ],
         },
         "request_id": {
             "type": "string",
@@ -127,20 +133,23 @@ def custom_openapi(app: FastAPI) -> dict[str, Any]:
     # D-entry that ships LAN exposure or multi-user re-adds the scheme
     # together with the middleware that backs it.
 
-    # Shared response declaration so endpoints can reference it with a single
-    # line (`responses={"404": {"$ref": "#/components/responses/NotFound"}}`).
-    # Defined once, so every error-returning path agrees on the media type.
+    # Shared response declarations so endpoints can reference them with
+    # a single line (`responses={"404": {"$ref": "#/components/responses/NotFound"}}`).
+    # Defined once so every error-returning path agrees on the media type.
     #
-    # ``Internal`` covers the catch-all ``InternalServerError`` raised by
-    # rest.py's ``@app.exception_handler(Exception)``; ``IntegrityError``
-    # covers the typed ``IntegrityError`` ServiceError used by D2 read
-    # paths when XSD validation fails on a record already on disk.
+    # 500s collapse under a single ``Internal`` envelope at the OpenAPI
+    # level — the wire shape (RFC 9457 problem+json with a ``code``
+    # field) is identical for any 500, and per-``code`` discrimination
+    # (e.g. ``code == integrity_error`` vs ``code == internal_error``)
+    # is what consumers branch on at runtime. Both ``code`` values are
+    # listed in the ``examples`` for the schema's ``code`` property
+    # above so the spec documents both as possible values without
+    # advertising two structurally-identical response components.
     responses = components.setdefault("responses", {})
     for code_ref, http_status, title in [
         ("NotFound",         404, "Not Found"),
         ("Conflict",         409, "Conflict"),
         ("ValidationFailed", 422, "Validation Failed"),
-        ("IntegrityError",   500, "Integrity Error"),
         ("Internal",         500, "Internal Server Error"),
     ]:
         responses[code_ref] = {
@@ -151,6 +160,27 @@ def custom_openapi(app: FastAPI) -> dict[str, Any]:
                 },
             },
         }
+
+    # Post-process: FastAPI's ``get_openapi`` walks every route's
+    # ``responses=`` dict and stamps a default ``description`` matching
+    # the HTTP status code's human name (e.g. ``"Not Found"`` for 404),
+    # which is harmless on a normal response object but combines with
+    # a ``$ref`` to produce an invalid OpenAPI 3.0 reference object
+    # (sibling keys are ignored per the JSON Reference spec, and
+    # validators flag the combination as invalid). OpenAPI 3.1 allows
+    # merge semantics, but FastAPI still emits 3.0-style here and
+    # third-party tools (openapi-typescript, swagger-codegen) handle
+    # the sibling-keys-with-$ref case inconsistently. Strip every
+    # non-``$ref`` key from any response object that contains
+    # ``$ref`` so the on-the-wire spec is unambiguous.
+    for _path, item in schema.get("paths", {}).items():
+        for method in ("get", "post", "put", "patch", "delete"):
+            op = item.get(method)
+            if not op:
+                continue
+            for code, body in list(op.get("responses", {}).items()):
+                if isinstance(body, dict) and "$ref" in body:
+                    op["responses"][code] = {"$ref": body["$ref"]}
 
     app.openapi_schema = schema
     return schema
@@ -200,6 +230,11 @@ ERR_CREATE: dict[str | int, dict[str, Any]] = {
     "422": _ref("ValidationFailed"),
     "500": _ref("Internal"),
 }
+# ``ERR_UPDATE`` is also the right choice for sub-resource POSTs that
+# create something under a path-parameterised parent — e.g. ``POST
+# /jumpers/{jumper_id}/memberships`` creates a membership but can
+# 404 on a missing jumper. Don't reach for ``ERR_CREATE`` (which
+# omits 404) on those routes.
 ERR_UPDATE: dict[str | int, dict[str, Any]] = {
     "404": _ref("NotFound"),
     "409": _ref("Conflict"),
