@@ -1,6 +1,5 @@
 import React, { useState, useEffect } from 'react';
 import {
-  User,
   RefreshCw,
   Check,
   Loader2,
@@ -8,10 +7,10 @@ import {
   Download,
   ExternalLink,
 } from 'lucide-react';
-import { jumper } from '../mock';
 import { runVerify, runReindex, checkForUpdates, ApiError } from '../api';
 import { StatusDot, GhostButton, Card, SectionLabel } from '../primitives';
 import { useAltitudeUnit } from '../units';
+import IdentityManager from './Identity';
 
 // Bridge to the pywebview JS API. Returns null when running in the
 // browser (Vite dev mode) where pywebview is absent — callers fall
@@ -31,7 +30,7 @@ export default function Settings() {
         <div className="text-[12px] text-neutral-500 mt-1.5">Logbook configuration and preferences.</div>
       </div>
 
-      <ProfileSection />
+      <IdentitySection />
       <LogbookSection />
       <UnitsSection />
       <VerifySection />
@@ -43,42 +42,19 @@ export default function Settings() {
   );
 }
 
-function ProfileSection() {
+// Identity moved into Settings from the (now-removed) Profile tab.
+// IdentityManager renders its own card chrome (matching the rest of
+// the identity edit flow), so we don't wrap it in a Settings Card —
+// the SectionLabel sits above the card the same way the legacy
+// Profile page laid them out.
+function IdentitySection() {
   return (
-    <Card className="p-5 mb-2.5">
-      <SectionLabel>PROFILE</SectionLabel>
-      <div className="flex items-center gap-3.5 mb-4">
-        <div
-          className="w-11 h-11 rounded-full flex items-center justify-center"
-          style={{
-            background: 'var(--accent-soft)',
-            border: '0.5px solid var(--accent-soft-border)',
-          }}
-        >
-          <User className="w-5 h-5" style={{ color: 'var(--accent)' }} strokeWidth={1.8} />
-        </div>
-        <div>
-          <div className="text-[15px] font-medium text-neutral-100">{jumper.name}</div>
-          <div className="text-[11px] text-neutral-500 mt-0.5">Single-user logbook</div>
-        </div>
+    <div className="mb-2.5">
+      <div className="px-1 mb-2">
+        <SectionLabel>IDENTITY</SectionLabel>
       </div>
-      <div
-        className="grid grid-cols-2 gap-3.5 pt-3.5"
-        style={{ borderTop: '0.5px solid var(--border-strong)' }}
-      >
-        <div>
-          <div className="text-[10px] tracking-[0.2em] text-neutral-500 font-medium mb-1">EXIT WEIGHT</div>
-          <div className="text-[18px] font-mono font-medium">
-            {jumper.exitWeight} <span className="text-[12px] text-neutral-500">{jumper.weightUnit}</span>
-          </div>
-          <div className="text-[10px] text-neutral-600 mt-1">Updated {jumper.weightUpdated}</div>
-        </div>
-        <div>
-          <div className="text-[10px] tracking-[0.2em] text-neutral-500 font-medium mb-1">DEFAULT JURISDICTION</div>
-          <Segmented value={jumper.defaultJurisdiction} options={['USPA', 'CSPA', 'Both']} />
-        </div>
-      </div>
-    </Card>
+      <IdentityManager />
+    </div>
   );
 }
 

@@ -63,7 +63,8 @@ vi.mock('../src/modals/DropzoneModal', () => ({
 
 // Import the views AFTER vi.mock so the mocks are in place when
 // the view modules' top-level code runs.
-import Profile from '../src/views/Profile';
+import Dashboard from '../src/views/Dashboard';
+import IdentityManager from '../src/views/Identity';
 import Jumps from '../src/views/Jumps';
 import MyRig from '../src/views/MyRig';
 import Inventory from '../src/views/Inventory';
@@ -72,7 +73,8 @@ import Settings from '../src/views/Settings';
 import CareerStats from '../src/views/CareerStats';
 
 const VIEWS = [
-  ['Profile', Profile],
+  ['Dashboard', Dashboard],
+  ['Identity', IdentityManager],
   ['Jumps', Jumps],
   ['MyRig', MyRig],
   ['Inventory', Inventory],

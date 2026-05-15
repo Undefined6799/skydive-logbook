@@ -1,23 +1,29 @@
 import React, { useEffect, useState } from 'react';
 import { Loader2, AlertTriangle, Pencil, Save, User, Paperclip, ChevronDown, ChevronRight } from 'lucide-react';
 // Per D56 Phase 6: every per-row credential write call has moved to
-// the save orchestrator (identityEditOrchestrator.js). Profile.jsx
+// the save orchestrator (identityEditOrchestrator.js). Identity.jsx
 // only needs listJumpers, createJumper (for OnboardingForm), and
 // ApiError (for InlineError/ErrorBanner) now.
 import {
   listJumpers, createJumper, ApiError,
 } from '../api';
-import CareerStats from './CareerStats';
 import IdentityEditFull from './IdentityEditFull';
 
-// Profile view — single-jumper per D33 (v0.1; multi-jumper deferred).
+// Identity manager — single-jumper per D33 (v0.1; multi-jumper deferred).
+//
+// Previously the default export of Profile.jsx and rendered as a
+// standalone page. The Profile tab is gone (replaced by Dashboard);
+// this component is now embedded inside Settings as the "Identity"
+// card. Page chrome (title, max-width wrapper, CareerStats) moved
+// out: Settings supplies its own chrome and CareerStats became a
+// Dashboard widget.
 //
 // Three top-level states:
 //   * loading    — first fetch in flight (jumper === undefined).
 //   * onboarding — list returned []; render the onboarding form.
-//   * ready      — jumper record loaded; render identity + stats,
-//                  with an Edit button that swaps identity into a
-//                  form and PUTs on Save.
+//   * ready      — jumper record loaded; render identity card with
+//                  an Edit button that swaps it into a form and
+//                  PUTs on Save.
 //
 // Per D33 the jumper carries an exit_weight_updated_at clock that
 // goes "stale" after 365 days. We surface that as an inline yellow
@@ -33,7 +39,7 @@ import IdentityEditFull from './IdentityEditFull';
 
 const STALENESS_DAYS = 365;
 
-export default function Profile() {
+export default function IdentityManager() {
   const [jumper, setJumper] = useState(undefined);  // undef=loading, null=none, obj=loaded
   const [error, setError] = useState(null);
   const [reloadKey, setReloadKey] = useState(0);
@@ -59,61 +65,31 @@ export default function Profile() {
   }
 
   if (error) {
-    return (
-      <div className="px-10 py-10 max-w-[1100px]">
-        <ErrorBanner error={error} />
-      </div>
-    );
+    return <ErrorBanner error={error} />;
   }
 
   if (jumper === undefined) {
     return (
-      <div className="px-10 py-10 max-w-[1100px] flex items-center gap-2 text-[13px] text-neutral-500">
+      <div className="flex items-center gap-2 text-[13px] text-neutral-500 py-2">
         <Loader2 className="w-3.5 h-3.5 animate-spin" />
-        Loading profile…
+        Loading identity…
       </div>
     );
   }
 
-  return (
-    <div className="px-10 py-10 max-w-[1100px]">
-      <div className="text-3xl font-medium tracking-tight mb-1">Profile</div>
-      <div className="text-[12px] text-neutral-500 mb-8">
-        Your record and currency at a glance.
-      </div>
-
-      {jumper === null ? (
-        <OnboardingForm onCreated={handleSaved} />
-      ) : editing ? (
-        // D56 Phase 5: the unified edit form replaces the legacy
-        // name+exit-weight IdentityEdit. Saving runs the per-row
-        // orchestrator (DELETE → PUT → POST). On full success
-        // handleSaved fires and the parent reloads; on partial
-        // failure the form keeps itself open with the inline
-        // banner + Retry remaining affordance.
-        <IdentityEditFull
-          jumper={jumper}
-          onCancel={() => setEditing(false)}
-          onSaved={handleSaved}
-        />
-      ) : (
-        // D47 / 2026 restructure: the identity card hosts associations
-        // (org-grouped memberships + cops + ratings), tandem ratings,
-        // and medicals as inner sub-sections. The five standalone
-        // sibling sections are gone — everything lives in one place
-        // tied to the jumper's identity.
-        <IdentityView
-          jumper={jumper}
-          onEdit={() => setEditing(true)}
-        />
-      )}
-
-      <div className="text-[10px] tracking-[0.25em] text-neutral-500 font-medium mb-3">
-        CAREER STATS
-      </div>
-      <CareerStats reloadKey={reloadKey} />
-    </div>
-  );
+  if (jumper === null) {
+    return <OnboardingForm onCreated={handleSaved} />;
+  }
+  if (editing) {
+    return (
+      <IdentityEditFull
+        jumper={jumper}
+        onCancel={() => setEditing(false)}
+        onSaved={handleSaved}
+      />
+    );
+  }
+  return <IdentityView jumper={jumper} onEdit={() => setEditing(true)} />;
 }
 
 
@@ -648,7 +624,7 @@ function IdentityView({ jumper, onEdit }) {
   const stale = isExitWeightStale(jumper);
   return (
     <div
-      className="rounded-xl p-5 mb-6"
+      className="rounded-xl p-5"
       style={{ background: 'var(--surface-1)', border: '0.5px solid var(--border-strong)' }}
     >
       <div className="flex items-start justify-between mb-4">
@@ -779,7 +755,7 @@ function OnboardingForm({ onCreated }) {
   return (
     <form
       onSubmit={handleCreate}
-      className="rounded-xl p-5 mb-6"
+      className="rounded-xl p-5"
       style={{ background: 'var(--surface-1)', border: '0.5px solid var(--border-strong)' }}
     >
       <div className="text-[10px] tracking-[0.25em] text-neutral-500 font-medium mb-1">

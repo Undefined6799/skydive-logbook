@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import Sidebar from './Sidebar';
-import Profile from './views/Profile';
+import Dashboard from './views/Dashboard';
 import Jumps from './views/Jumps';
 import MyRig from './views/MyRig';
 import Inventory from './views/Inventory';
@@ -8,7 +8,7 @@ import Dropzones from './views/Dropzones';
 import Settings from './views/Settings';
 
 const VIEWS = {
-  profile: Profile,
+  dashboard: Dashboard,
   jumps: Jumps,
   myrig: MyRig,
   inventory: Inventory,
@@ -17,10 +17,11 @@ const VIEWS = {
 };
 
 export default function App() {
-  // P.2: app opens on the Profile tab. The view is the user's
-  // landing page — surfaces their identity + career stats first.
-  const [activeTab, setActiveTab] = useState('profile');
-  const View = VIEWS[activeTab] || Profile;
+  // App opens on the Dashboard — the new landing page hosts a
+  // function bar (Log jump shortcut) and a configurable grid of
+  // stats widgets. Identity moved into Settings.
+  const [activeTab, setActiveTab] = useState('dashboard');
+  const View = VIEWS[activeTab] || Dashboard;
 
   return (
     <div className="min-h-screen flex" style={{ background: 'var(--bg)', color: 'var(--text)' }}>

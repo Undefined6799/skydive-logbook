@@ -1,8 +1,8 @@
 import React from 'react';
-import { BookOpen, Layers, Boxes, MapPin, User, Settings as SettingsIcon } from 'lucide-react';
+import { BookOpen, Layers, Boxes, MapPin, LayoutGrid, Settings as SettingsIcon } from 'lucide-react';
 
 const NAV = [
-  { id: 'profile', icon: User, label: 'Profile' },
+  { id: 'dashboard', icon: LayoutGrid, label: 'Dashboard' },
   { id: 'jumps', icon: BookOpen, label: 'Jumps' },
   { id: 'myrig', icon: Layers, label: 'My rig' },
   { id: 'inventory', icon: Boxes, label: 'Inventory' },

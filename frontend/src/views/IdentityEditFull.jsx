@@ -20,7 +20,7 @@ import {
   Field,
   FormGrid,
   inputCls,
-} from './Profile';
+} from './Identity';
 import {
   initStagedJumper,
   computeIsDirty,

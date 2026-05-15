@@ -23,7 +23,7 @@ import {
   ExpiryChip,
   CardChip,
   inputCls,
-} from './Profile';
+} from './Identity';
 import { setRowField, addRow, removeRow } from './identityEditStaged';
 
 
