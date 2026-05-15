@@ -166,14 +166,21 @@ class RigCreate(BaseModel):
 
 
 class RigUpdate(BaseModel):
-    """Request body for ``PUT /api/v1/rigs/{id}`` (R.2.0c+).
+    """Request body for ``PUT /api/v1/rigs/{id}`` (R.2.0c+, D66).
 
-    Full-replace shape minus ``repack_history`` — that mutation
-    belongs to the R.5 repack-event write flow, not to the metadata-
-    only update surface (D38). The four ``current_*_id`` refs are on
-    this update body but the service routes a swap intent through
-    the dedicated swap path (D37): a direct PUT changing
-    ``current_main_id`` is rejected with a 409 in R.2.0c.
+    Full-replace metadata shape. The four ``current_*_id`` refs are
+    on this body but the service routes a swap intent through the
+    dedicated swap path (D37): a direct PUT changing
+    ``current_main_id`` is rejected with a 409.
+
+    Per D66, ``repack_history`` is on this body — clients can
+    replace the on-disk list to set/correct the repack record
+    without hand-editing rig.xml. R.5's dedicated append + counter-
+    side-effects flow remains deferred; this path is the metadata-
+    only "I'm editing my own logbook" surface. The service uses an
+    empty payload list to mean "preserve on-disk" rather than
+    "clear", so pre-D66 clients that don't send the field don't
+    accidentally wipe history (see ``update_rig``).
     """
 
     model_config = ConfigDict(extra="forbid")
@@ -184,6 +191,7 @@ class RigUpdate(BaseModel):
     current_reserve_id: UUID
     current_aad_id: UUID
     current_container_id: UUID
+    repack_history: list[RepackEntry] = []
     notes_log: list[NotesLogEntry] = []
 
 

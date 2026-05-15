@@ -171,6 +171,12 @@ def _update_payload_from(rig, **overrides) -> RigUpdate:
     current_*_id matches the on-disk rig, so the D37 swap check
     passes and we exercise only the metadata path. Tests for
     swap-via-PUT rejection override one ref explicitly.
+
+    ``repack_history`` defaults to empty list (matches a pre-D66
+    client that doesn't send the field) — the service then
+    preserves the on-disk value per D66. Tests that exercise the
+    new "replace via PUT" path supply ``repack_history`` as an
+    override.
     """
     base: dict = {
         "nickname": rig.nickname,
@@ -704,9 +710,13 @@ class TestUpdate:
         assert updated.updated_at != created.updated_at
         assert updated.updated_at > created.created_at
 
-    def test_preserves_repack_history(self, bootstrapped_root: Path):
-        # D38: repack_history is R.5 territory and not on RigUpdate.
-        # It must survive a metadata edit untouched.
+    def test_preserves_repack_history_when_payload_empty(
+        self, bootstrapped_root: Path,
+    ):
+        # D66: empty payload ``repack_history`` (the default from a
+        # pre-D66 client that doesn't send the field) MUST preserve
+        # the on-disk list rather than wipe it. This is the
+        # backwards-compat guard described in D66 §Consequences.
         history = [
             RepackEntry(
                 date=date(2025, 6, 1),
@@ -724,6 +734,38 @@ class TestUpdate:
             _update_payload_from(created, jurisdiction=Jurisdiction.CSPA),
         )
         assert updated.repack_history == history
+
+    def test_repack_history_replaces_when_payload_supplies_list(
+        self, bootstrapped_root: Path,
+    ):
+        # D66: a non-empty payload list replaces the on-disk list
+        # verbatim. The EditRigModal sets this when the user
+        # changes the latest repack date.
+        original = [
+            RepackEntry(
+                date=date(2024, 9, 1),
+                rigger="Joe Rigger",
+                jurisdiction_seal=Jurisdiction.USPA,
+            ),
+        ]
+        created = _create_rig_with_seeded_components(
+            bootstrapped_root, repack_history=original
+        )
+        new_history = [
+            *original,
+            RepackEntry(
+                date=date(2025, 3, 15),
+                rigger="Sally Sealer",
+                jurisdiction_seal=Jurisdiction.USPA,
+            ),
+        ]
+        updated = rig_service.update_rig(
+            bootstrapped_root,
+            "default",
+            created.id,
+            _update_payload_from(created, repack_history=new_history),
+        )
+        assert updated.repack_history == new_history
 
     def test_notes_log_replaces(self, bootstrapped_root: Path):
         # notes_log IS on RigUpdate (full-replace), so a PUT replaces

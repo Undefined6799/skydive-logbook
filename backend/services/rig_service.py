@@ -835,8 +835,21 @@ def update_rig(
         )
 
     # Step 5: build the merged Rig. id + created_at preserved (D32);
-    # updated_at bumped; repack_history preserved (R.5 territory per
-    # D38).
+    # updated_at bumped.
+    #
+    # D66 ``repack_history`` resolution: a payload empty-list means
+    # "preserve on-disk" so pre-D66 clients that don't send the
+    # field don't accidentally wipe a populated history. A non-
+    # empty payload list replaces the on-disk list verbatim, which
+    # is how the EditRigModal sets / corrects the latest repack
+    # date. The cross-component side effects (reserve ride count,
+    # AAD fire count, repack_count_derived projection) remain
+    # R.5 territory per D38; this path is metadata-only.
+    next_repack_history = (
+        payload.repack_history
+        if payload.repack_history
+        else current.repack_history
+    )
     try:
         merged = Rig(
             id=current.id,
@@ -846,7 +859,7 @@ def update_rig(
             current_reserve_id=current.current_reserve_id,
             current_aad_id=current.current_aad_id,
             current_container_id=current.current_container_id,
-            repack_history=current.repack_history,
+            repack_history=next_repack_history,
             notes_log=payload.notes_log,
             created_at=current.created_at,
             updated_at=now_utc_iso(),

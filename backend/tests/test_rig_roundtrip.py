@@ -277,21 +277,31 @@ class TestRigPydanticContract:
         )
         assert len(c.repack_history) == 1
 
-    def test_rig_update_forbids_repack_history_field(self):
-        # D38: repack_history mutation belongs to the R.5 write
-        # flow, not to the metadata-only update. The Update model
-        # does not declare repack_history as a field; passing it
-        # via extra="forbid" gets rejected.
-        with pytest.raises(ValidationError):
-            RigUpdate(
-                nickname="X",
-                jurisdiction=Jurisdiction.USPA,
-                current_main_id=UUID(_M),
-                current_reserve_id=UUID(_R),
-                current_aad_id=UUID(_A),
-                current_container_id=UUID(_C),
-                repack_history=[],  # type: ignore[call-arg]
-            )
+    def test_rig_update_accepts_repack_history_field(self):
+        # D66 narrowed D38's deferral: RigUpdate accepts a
+        # ``repack_history`` field so jumpers can correct their
+        # repack record via the regular edit surface without
+        # hand-editing rig.xml. R.5's append + cross-component
+        # side-effects flow remains deferred; this contract is
+        # the metadata-only path.
+        from datetime import date as _date
+        u = RigUpdate(
+            nickname="X",
+            jurisdiction=Jurisdiction.USPA,
+            current_main_id=UUID(_M),
+            current_reserve_id=UUID(_R),
+            current_aad_id=UUID(_A),
+            current_container_id=UUID(_C),
+            repack_history=[
+                RepackEntry(
+                    date=_date(2025, 6, 15),
+                    rigger="Rigger",
+                    jurisdiction_seal=Jurisdiction.USPA,
+                ),
+            ],
+        )
+        assert len(u.repack_history) == 1
+        assert u.repack_history[0].date == _date(2025, 6, 15)
 
     def test_repack_entry_rigger_required(self):
         with pytest.raises(ValidationError):

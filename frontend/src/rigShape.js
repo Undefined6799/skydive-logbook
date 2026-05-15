@@ -280,6 +280,7 @@ function shapeAad(aad) {
       brand: '—',
       model: 'missing',
       mode: '—',
+      isChangeableMode: false,
       dom: null,
       jumps: 0,
       fires: 0,
@@ -295,6 +296,12 @@ function shapeAad(aad) {
     brand: aad.manufacturer || '—',
     model: aad.model || 'unknown',
     mode: aad.mode || '—',
+    // D34: AAD model carries an explicit ``is_changeable_mode``
+    // boolean (Cypres 2, Vigil 2, M2 all support Pro / Expert /
+    // Tandem swaps). Surfacing it on the rig shape lets the rig
+    // header show an inline editor next to AAD MODE so the user
+    // doesn't have to dive into the inventory tab.
+    isChangeableMode: aad.is_changeable_mode === true,
     dom: asMonthYear(aad.date_of_manufacture),
     jumps: aad.jump_count_total != null
       ? aad.jump_count_total
