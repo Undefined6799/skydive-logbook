@@ -5,13 +5,27 @@ can be deleted at any time — `reindex` rebuilds it from scratch by
 walking the jump folders. Every write path must update XML first and
 only then the index.
 
-**Schema versioning (D26).** The index carries its schema version in
-``PRAGMA user_version``. ``open_index`` is the single enforcement point:
+**Schema versioning (D26 + D68).** The index carries its schema
+version in ``PRAGMA user_version``. ``open_index`` is the single
+enforcement point. Branch 3 splits asymmetrically per D68 — newer
+on disk refuses, older on disk rebuilds:
 
-1. ``user_version == 0``       → fresh DB; run ``_SCHEMA``.
-2. ``user_version == CURRENT`` → no-op.
-3. anything else               → drop every user table, re-run
-   ``_SCHEMA``, and let the caller reindex from XML.
+1. ``user_version == 0``                            → fresh DB;
+   install ``_SCHEMA``, stamp current version.
+2. ``user_version == CURRENT``                      → no-op.
+3a. ``user_version > CURRENT``                       → refuse with
+    :class:`IndexSchemaTooNewError`. The user is on an older
+    binary against a newer logbook; rebuilding would silently
+    destroy columns this build can't repopulate from XML.
+    ``main.py`` catches the error and exits with a message
+    pointing at the index file the user can delete to consciously
+    rebuild against the older schema.
+3b. ``0 < user_version < CURRENT``                   → drop every
+    user table, re-run ``_SCHEMA``, let the caller reindex from
+    XML. This is the legitimate D26 path: the user runs a newer
+    binary on an older logbook, the older columns are a strict
+    subset of the newer schema, reindex fills the new columns
+    from XML.
 
 We do not ``ALTER TABLE``. The index is rebuildable (D3), so a
 drop-and-reindex loop is both correct and cheaper to maintain than a
