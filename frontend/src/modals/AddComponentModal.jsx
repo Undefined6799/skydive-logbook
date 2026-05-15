@@ -27,8 +27,14 @@ const CREATORS = {
   container: createContainer,
 };
 
-export default function AddComponentModal({ visible, onClose, onCreated }) {
-  const [kind, setKind] = useState('main');
+// ``initialKind`` lets callers pre-select the kind on open. The
+// AddRigModal pops this with the matching slot kind when the user
+// hits the "Add a container/main/…" affordance in an empty pool,
+// so the user doesn't have to re-pick the kind they were already
+// missing. Defaults to ``'main'`` to preserve the existing
+// open-from-Inventory behaviour.
+export default function AddComponentModal({ visible, onClose, onCreated, initialKind = 'main' }) {
+  const [kind, setKind] = useState(initialKind);
   const [form, setForm] = useState(emptyForm());
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState(null);
@@ -41,12 +47,12 @@ export default function AddComponentModal({ visible, onClose, onCreated }) {
     document.body.style.overflow = 'hidden';
     setError(null);
     setSubmitting(false);
-    setKind('main');
+    setKind(initialKind);
     setForm(emptyForm());
     return () => {
       document.body.style.overflow = '';
     };
-  }, [visible]);
+  }, [visible, initialKind]);
 
   if (!visible) return null;
 

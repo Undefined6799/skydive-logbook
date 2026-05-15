@@ -8,6 +8,7 @@ import {
   createRig,
   ApiError,
 } from '../api';
+import AddComponentModal from './AddComponentModal';
 
 // Slot config — order matters: container first (per D33's sequence
 // in <rig>), then main / reserve / aad. The label drives the UI
@@ -60,6 +61,14 @@ export default function AddRigModal({ visible, onClose, onCreated }) {
   // Submit state — separate from load state.
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState(null);
+
+  // Inline "create a component without leaving the rig modal" flow.
+  // When the user hits the "+ Add" affordance on an empty pool,
+  // ``addingKind`` captures the slot type — that drives an
+  // AddComponentModal overlay with the matching kind pre-selected.
+  // On creation, the new component lands in the pool, the slot
+  // auto-selects it, and the carousel advances to the next slot.
+  const [addingKind, setAddingKind] = useState(null);
 
   useEffect(() => {
     if (!visible) {
@@ -140,6 +149,22 @@ export default function AddRigModal({ visible, onClose, onCreated }) {
   function handleClear(slotType) {
     setPicked((prev) => ({ ...prev, [slotType]: null }));
     setActiveSlot(slotType);
+  }
+
+  // A new component was just created via the inline overlay.
+  // 1. Append it to the matching pool (the inline create only
+  //    fires from empty pools, but ``filter+concat`` is safe
+  //    regardless).
+  // 2. Auto-select it for the slot we opened the dialog from
+  //    (so the user doesn't have to click again).
+  // 3. Advance to the next empty slot, matching the post-pick
+  //    flow in ``handleSelect``.
+  function handleInlineCreated(kind, created) {
+    setPools((prev) => ({ ...prev, [kind]: [...prev[kind], created] }));
+    setPicked((prev) => ({ ...prev, [kind]: created }));
+    const next = SLOTS.find((s) => s.type !== kind && !picked[s.type]);
+    setActiveSlot(next ? next.type : null);
+    setAddingKind(null);
   }
 
   async function handleSave() {
@@ -295,6 +320,7 @@ export default function AddRigModal({ visible, onClose, onCreated }) {
                     onSetActive={() => setActiveSlot(slot.type)}
                     onSelect={(item) => handleSelect(slot.type, item)}
                     onClear={() => handleClear(slot.type)}
+                    onAddNew={() => setAddingKind(slot.type)}
                   />
                 ))}
               </div>
@@ -338,6 +364,19 @@ export default function AddRigModal({ visible, onClose, onCreated }) {
           </div>
         </div>
       </div>
+      {/* Inline-create overlay. Renders ABOVE the rig modal via its
+          own z-stack inside AddComponentModal (the inner overlay
+          uses z-40/z-50 just like this one — Slot's empty-state
+          button only ever fires when the rig modal is the topmost
+          layer, so the doubled stack is fine in practice). On
+          success, ``handleInlineCreated`` appends to the pool,
+          selects the new component, and advances the carousel. */}
+      <AddComponentModal
+        visible={addingKind !== null}
+        initialKind={addingKind || 'main'}
+        onClose={() => setAddingKind(null)}
+        onCreated={(created) => handleInlineCreated(addingKind, created)}
+      />
     </>
   );
 }
@@ -405,7 +444,7 @@ function FooterErrorBanner({ error }) {
 }
 
 
-function Slot({ slot, selected, active, pool, onSetActive, onSelect, onClear }) {
+function Slot({ slot, selected, active, pool, onSetActive, onSelect, onClear, onAddNew }) {
   if (selected) {
     // Selected component summary. Pull manufacturer / model /
     // size_sqft from the real entity shape (size_sqft on
@@ -467,8 +506,24 @@ function Slot({ slot, selected, active, pool, onSetActive, onSelect, onClear }) 
         </div>
         <div style={{ borderTop: '0.5px solid #1f2226', background: 'var(--surface-1)' }}>
           {pool.length === 0 ? (
-            <div className="p-3 text-[12px] text-neutral-500 text-center italic">
-              Nothing available — add one on the Inventory page.
+            <div className="p-4 flex flex-col items-center gap-2">
+              <div className="text-[12px] text-neutral-500 text-center italic">
+                Nothing available yet.
+              </div>
+              {onAddNew && (
+                <button
+                  type="button"
+                  onClick={onAddNew}
+                  className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-md text-[12px] font-medium transition"
+                  style={{
+                    background: 'var(--text)',
+                    color: 'var(--bg)',
+                  }}
+                >
+                  <Plus className="w-3 h-3" strokeWidth={2.2} />
+                  Add a {slot.label.toLowerCase()}
+                </button>
+              )}
             </div>
           ) : (
             pool.map((opt) => {
