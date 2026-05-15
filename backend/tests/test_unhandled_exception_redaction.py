@@ -1,4 +1,4 @@
-"""Settings-gated redaction of unhandled-exception detail (D-NEW).
+"""Settings-gated redaction of unhandled-exception detail (D67).
 
 The catch-all ``@app.exception_handler(Exception)`` in ``rest.py`` used
 to include ``f"{type(exc).__name__}: {exc}"`` in every 500 response

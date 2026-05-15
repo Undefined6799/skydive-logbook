@@ -7159,3 +7159,240 @@ complementary, not in conflict.
 - 2026-05-15 conversation: user observed that the rig edit
   modal had no way to set the repack date, only the wizard
   did at create time.
+
+---
+
+## D67 — Unhandled-exception detail redaction is auto-gated by bind posture
+
+**Date:** 2026-05-15.
+
+**Decision.** The `application/problem+json` body returned by the
+catch-all `@app.exception_handler(Exception)` in
+`backend/api/rest.py` includes the exception class name and message
+as the `detail` field only when the API is bound to loopback. On any
+other bind, the `detail` field carries a generic
+``"an internal error occurred; see server logs (request_id=...)"``
+message and the full traceback reaches the structured log only.
+
+Control surface: a new `Settings.expose_internal_errors:
+bool | None` (env `SKYDIVE_EXPOSE_INTERNAL_ERRORS`). `None` (the
+default) is "auto"; the `Settings` model_validator resolves it to
+`True` when `bind_host in {"127.0.0.1", "localhost", "::1"}` and
+`False` otherwise. An explicit boolean from env / TOML / init
+overrides the auto-rule.
+
+**Why.** D16 mandates problem+json on every error path and explicitly
+flags "leaking internal state" as the trade-off the verbose path
+makes. The pre-D67 code unconditionally included
+`f"{type(exc).__name__}: {exc}"` because v0.1 was loopback-only
+(D48); the comment at the raise site even foresaw the tightening.
+With Slice 8 + the bind-host warning shipped in the same release,
+the implicit "we never bind beyond loopback" assumption is no
+longer load-bearing — a user can flip `bind_host` and reach D48's
+unauth'd LAN posture without other code changes. The redaction
+default has to flip the same direction.
+
+The auto-resolution rule (loopback ⇒ verbose, anything else ⇒
+redacted) means the desktop user keeps useful error modals while
+the operator who reconfigures the bind has to opt back into
+verbose with one env var. The full traceback always reaches
+`exc_info` on the structured logger — operator debugging is
+unaffected.
+
+**Consequences.**
+
+- API contract: the *shape* of 500 responses is unchanged (still
+  RFC 9457 problem+json with the standard `code` /
+  `request_id` / `instance` extensions). The *content* of
+  `detail` changes between the two modes. D16's "code is the
+  stable machine-readable identifier consumers should branch
+  on" stays the dispatch rule.
+- The `request_id` field of the redacted body is the operator's
+  bridge between the on-the-wire response and the log line that
+  carries the full traceback. The two correlate by construction
+  via the D27 `request_id_var` context var.
+- The stderr traceback print at `rest.py:131-137` is gated by
+  the same flag — it serves the same "human-visible debug in the
+  launcher terminal" purpose as the wire body, and shipping
+  redacted bodies while still printing the full trace would
+  defeat the redaction posture if the stderr is later captured
+  (systemd unit, Docker logs, etc.).
+- Override pattern: the exception handler reads the flag via
+  `request.app.dependency_overrides.get(get_settings,
+  get_settings)()` rather than the cached `get_settings()`
+  directly. The exception handler is not a normal
+  dependency-injected endpoint, so FastAPI's override machinery
+  doesn't apply automatically — looked up by hand so tests can
+  swap a Settings via `app.dependency_overrides[get_settings] =
+  lambda: ...`.
+
+**Loopback definition — minor known gaps.**
+
+The auto-rule's loopback set is `{"127.0.0.1", "localhost",
+"::1"}`. The following addresses are also loopback per RFC 1122 §
+3.2.1.3 and RFC 4291 §2.5.3 but are *not* covered:
+
+- `127.0.0.2` through `127.255.255.254` (entire 127/8 block).
+- `::ffff:127.0.0.1` (IPv4-mapped IPv6 loopback).
+- `::ffff:127.0.0.0/104` (IPv4-mapped loopback range).
+
+For these cases the auto-rule resolves `expose_internal_errors`
+to `False`. A user who knows what they're doing — explicitly
+binding to `127.0.0.2` for split testing, or to an IPv4-mapped
+IPv6 address — can set `SKYDIVE_EXPOSE_INTERNAL_ERRORS=true` to
+opt back in. We deliberately do not widen the auto-rule because:
+
+1. The 127/8 range is real loopback but extremely uncommon in
+   user-facing config. A regex match would handle it but adds
+   surface area for a rule that fires once in a hundred installs.
+2. `bind_host = "0.0.0.0"` (all interfaces) is loopback *and*
+   the LAN simultaneously. The conservative posture treats it as
+   not-loopback because a malicious client on the LAN can reach
+   the same endpoint as the local user.
+
+**Alternatives considered.**
+
+- *(Always redact.)* Loses the desktop UX. The local user's
+  "what just broke?" modal becomes a generic message with a
+  request_id they then have to grep the log for. Bad trade for
+  the only-loopback case.
+- *(Always verbose.)* The status quo this decision supersedes.
+  Loses the LAN posture defensively.
+- *(Settings.production_mode boolean.)* Couples the redaction
+  decision to a broader "are we prod" flag that doesn't exist
+  and would itself be a config sprawl. The auto-rule via
+  bind_host needs no new flag.
+
+**References.**
+
+- D16 — problem+json envelope and the "do not leak internal
+  state" trade-off.
+- D27 — `request_id` correlation across log + response.
+- D48 — single-user loopback posture for v0.1; the LAN
+  exposure successor is what this decision pre-emptively
+  addresses.
+- `backend/tests/test_unhandled_exception_redaction.py` —
+  pinning tests.
+
+---
+
+## D68 — Index schema-version refusal on newer-on-disk vs older-on-disk
+
+**Date:** 2026-05-15.
+
+**Decision.** `backend/storage/index.py:open_index` refuses to start
+when `PRAGMA user_version` on the index file is *greater* than the
+build's `INDEX_SCHEMA_VERSION` constant, by raising
+`IndexSchemaTooNewError`. The legitimate older-on-disk branch (the
+user installed a newer build against an older index) continues to
+drop user tables and re-run `_SCHEMA` per D26, then triggers
+`reindex_from_xml` from `main.py`. `main.py` catches
+`IndexSchemaTooNewError`, prints a message that names both versions
+and the index file path, and exits 1.
+
+This supersedes the pre-D68 branch-3 logic in `index.py:344-355`
+which dropped tables in **either** direction.
+
+**Why.** The drop-in-either-direction path silently destroyed
+columns that the older build doesn't know how to repopulate from
+XML on the next reindex. Consider: a user runs v0.2 (schema v12),
+which adds a column denormalized from a v0.2-only XML element.
+They then open the same logbook with a v0.1 binary (schema v10).
+The pre-D68 code:
+
+1. Sees `previous_version = 12`, current code says 10.
+2. Drops every user table (including the v12 columns).
+3. Reinstalls v10 schema.
+4. Restamps `PRAGMA user_version = 10`.
+5. Triggers `reindex_from_xml`, which fills the v10 columns
+   only — the v0.2-only XML element is silently ignored.
+
+The user sees their logbook open without error. The next v0.2
+launch sees v10 on disk, repeats the drop-and-rebuild back up to
+v12 — but their existing v0.2 index work is gone. Worse: if the
+v0.1 session created any new jumps, their `jump.xml` files lack
+the v0.2-only element, so even v0.2's reindex can't recover the
+intended state. The data loss is silent.
+
+The post-D68 path refuses to open the index on the older build.
+The user sees:
+
+    error: logbook index is schema v12; this app installs v10.
+    Upgrade the app, or delete <path>/index.sqlite to rebuild with
+    the older schema.
+
+They either upgrade or consciously delete the file. Both are
+intentional acts; neither loses data invisibly.
+
+**Consequences.**
+
+- D26's "drop and reindex" remains the rule for the legitimate
+  older-on-disk case. That's the path D26 was written for —
+  the user runs a newer build, the older schema on disk gets
+  rebuilt against the build's authoritative `_SCHEMA`, reindex
+  fills the rows from XML. No data loss because XML is the
+  source of truth (D3) and the older schema's columns are a
+  strict subset of the newer one.
+- The asymmetry is principled, not arbitrary. Newer-on-disk is
+  not a downgrade scenario the app can safely auto-handle — the
+  build can't repopulate fields it doesn't know exist. Refusing
+  preserves user data.
+- One operational consequence: a user who deliberately
+  side-grades to an older build needs an explicit step (delete
+  `index.sqlite`) rather than the auto-recovery the
+  pre-D68 code provided. That's the right trade — the explicit
+  step is the user acknowledging "I know I'm losing index
+  state; the XML is the source of truth and reindex will rebuild
+  what this build knows about."
+- `index.py`'s module docstring (lines 8-19) is updated to
+  describe the new three-branch shape. Pre-D68 the docstring
+  said "anything else → drop every user table"; post-D68 it
+  splits into "older on disk → drop + reindex" and "newer on
+  disk → refuse" branches.
+
+**Crash recovery / sandbox concerns.**
+
+- The `IndexSchemaTooNewError` raise path closes the SQLite
+  connection before raising. Without that, a leaked
+  `sqlite3.Connection` could keep file descriptors open on
+  Windows and produce a hard-to-diagnose "file is in use" on
+  the user's next attempt. The connection close is unconditional
+  before the raise; no `finally` wrap is needed because no code
+  runs between the close and the raise.
+- The test for this (`test_open_index_refusal_closes_the_connection`
+  in `test_index_schema_versioning.py`) exercises the raise
+  path. WAL mode + a single-reader retry on Linux doesn't
+  always produce a `busy` on the second connection even when
+  the first is leaked; the test as written exercises the code
+  path but doesn't, by itself, prove a leak would have been
+  detected. The Slice 9 partial-write recovery matrix
+  (Wave B) will add a stricter test that attempts a write under
+  the same conditions.
+
+**Alternatives considered.**
+
+- *(Keep the silent downgrade and document it as "advanced
+  users only".)* The pre-D68 behaviour. Rejected because the
+  failure mode is silent data loss, not a noisy error — exactly
+  the class of bug the audit posture rejects.
+- *(Auto-delete the index file and rebuild.)* Technically safe
+  because the index is rebuildable per D3. Rejected because
+  it's irreversible from the app's side — the user can't undo
+  a delete. The explicit "you delete it" path keeps the user
+  in the driver's seat.
+- *(Warn loudly but proceed.)* Risk-equivalent to the silent
+  downgrade in a non-interactive launcher; the user clicks the
+  desktop icon, the warning goes to stderr they don't see, and
+  the silent data loss happens anyway. Refusing-and-exiting
+  surfaces the warning where the user cannot miss it (the app
+  doesn't start).
+
+**References.**
+
+- D3 — SQLite is rebuildable index, not the authoritative
+  store; underpins the safety of the older-on-disk rebuild.
+- D26 — index schema versioning and the original drop-and-reindex
+  rule that this decision splits asymmetrically.
+- `backend/storage/index.py:IndexSchemaTooNewError`.
+- `backend/tests/test_index_schema_versioning.py` — refusal
+  + older-on-disk pinning tests.

@@ -6,6 +6,81 @@ follow [PEP 440](https://peps.python.org/pep-0440/) (Python) and
 [SemVer](https://semver.org/) (frontend). The two stay in lockstep
 on the major / minor / patch number.
 
+## [Unreleased]
+
+Post-`0.1.0-beta.1` audit / hardening cohort. Driven from
+``reviews/2026-05-15-code-debt-deep-audit.md`` and its three
+addenda; tracked as "Wave A" in
+``reviews/2026-05-15-slice-plan.md``.
+
+### Added — backend
+- **D67**: ``Settings.expose_internal_errors: bool | None``
+  controls whether ``application/problem+json`` 500 bodies
+  surface ``f"{type(exc).__name__}: {exc}"`` as ``detail``.
+  ``None`` (default) auto-resolves to ``True`` on loopback
+  bind, ``False`` otherwise. Env override:
+  ``SKYDIVE_EXPOSE_INTERNAL_ERRORS``.
+- **D68**: ``IndexSchemaTooNewError``. ``open_index`` now
+  refuses to start when ``PRAGMA user_version`` is greater
+  than the build's ``INDEX_SCHEMA_VERSION``; ``main.py``
+  exits 1 with a message naming both versions and the
+  index path. Supersedes the pre-D68 "drop in either
+  direction" branch.
+- **API contract**: every ``/api/v1/*`` route now declares
+  an explicit ``operation_id`` (stable name for SDK
+  codegen) and a ``responses=`` set referencing the
+  reusable RFC 9457 error envelope components in the
+  OpenAPI spec. 68 routes touched across 10 routers. Seven
+  snapshot tests pin coverage.
+- ``Settings.bind_host`` produces a loud WARNING at boot
+  when set to anything other than loopback, with a pointer
+  to ``SECURITY.md`` and D48.
+
+### Changed — backend
+- Three function-local imports in
+  ``backend/services/jump_service.py``
+  (``ValidationError``, ``hashlib``, ``mimetypes``) moved
+  to module top.
+- ``backend/api/jumps.py:list_jump_files_route`` returns
+  ``FolderFileResponse(**dataclasses.asdict(f))`` instead
+  of ``**f.__dict__`` — idiomatic for the frozen
+  dataclass.
+
+### Changed — frontend
+- ``App.jsx`` ``handleResume`` now lands the user on
+  ``dashboard`` after dismissing the wizard; the prior
+  ``'profile'`` matched no key in ``VIEWS`` and only
+  worked through the ``|| Dashboard`` fallback at the
+  cost of leaving the sidebar with no highlighted tab.
+- ``Settings.jsx`` ``TrashSection`` no longer claims
+  ``"2 deleted jumps · 1 retired component"`` via
+  hardcoded literals — the trash listing endpoint isn't
+  implemented end-to-end, so the section now renders an
+  honest "slated for v0.2" placeholder.
+- ``frontend/README.md`` updated to reflect the actual
+  wired-status of every view + modal (the pre-Wave-A line
+  "Only Jumps Log is wired" was the root cause of a
+  third-party review's incorrect headline).
+
+### Removed
+- ``frontend/src/modals/ComponentModal.jsx`` — orphan dead
+  code (322 LOC), never imported. Only consumer of
+  ``frontend/src/mock.js``.
+- ``frontend/src/mock.js`` — prototype mock data (351
+  LOC); no surviving importer.
+- ``backend/services/file_service.py`` — 6-line scaffold
+  stub. Attachment logic lives in
+  ``backend/services/jump_service.py``.
+
+### Documentation
+- ``DECISIONS.md``: D67 (exception redaction policy) +
+  D68 (newer-on-disk refusal).
+- New audit / verification documents under ``reviews/``:
+  ``2026-05-15-code-debt-deep-audit.md``,
+  ``2026-05-15-chatgpt-findings-deep-dive.md``,
+  ``2026-05-15-chatgpt-technical-sweep-verification.md``,
+  ``2026-05-15-slice-plan.md``.
+
 ## [0.1.0-beta.1] — initial public beta
 
 First public release. This is a beta — the on-disk format is stable

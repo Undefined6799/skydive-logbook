@@ -194,7 +194,7 @@ def create_app(*, mount_frontend: bool = True) -> FastAPI:
         )
         request_id = request_id_of(request)
         # Detail surfacing is gated by ``Settings.expose_internal_errors``
-        # (auto-defaults True on loopback, False otherwise per D-NEW).
+        # (auto-defaults True on loopback, False otherwise per D67).
         # When False, the wire body says generic; the request_id in the
         # response correlates to the structured log line that does
         # carry the full traceback for operator debugging.
