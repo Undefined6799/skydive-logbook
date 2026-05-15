@@ -14,6 +14,16 @@ addenda; tracked as "Wave A" + "Wave B" in
 ``reviews/2026-05-15-slice-plan.md``.
 
 ### Added — backend
+- **Configurable CORS allow-list** (Slice 21).
+  ``Settings.cors_allowed_origins: list[str]`` (env
+  ``SKYDIVE_CORS_ALLOWED_ORIGINS``, JSON-encoded list) replaces
+  the pre-Slice-21 hardcoded
+  ``["http://localhost:5173", "http://127.0.0.1:5173"]``. Default
+  preserves the prior values. An empty list short-circuits the
+  middleware registration entirely (the packaged pywebview
+  same-origin case). Users who run the dev server on a
+  non-standard port or expose to a known LAN host no longer
+  have to edit code.
 - **Magic-bytes content-type sniffing** (Slice 11). The
   multipart ``Content-Type`` header is now treated as
   adversarial input: every uploaded file is sniffed via the new
