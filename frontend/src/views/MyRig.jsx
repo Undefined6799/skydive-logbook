@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { ChevronRight, Plus, Calendar, AlertTriangle, Loader2, Star, Trash2 } from 'lucide-react';
+import { ChevronRight, Plus, Calendar, AlertTriangle, Loader2, Star, Trash2, Pencil } from 'lucide-react';
 import {
   DndContext,
   PointerSensor,
@@ -31,6 +31,8 @@ import { buildRigShape } from '../rigShape';
 import { StatusDot, ClockPill, StatCard, ProgressRow, SectionLabel, Card, STATUS } from '../primitives';
 import ComponentDetailModal from '../modals/ComponentDetailModal';
 import AddRigModal from '../modals/AddRigModal';
+import EditRigModal from '../modals/EditRigModal';
+import EditAadModeModal from '../modals/EditAadModeModal';
 
 // Design-system status pill labels (post-2026-05 redesign). Lowercase,
 // short, paired with a 6px dot of the same hue. The yellow/red variants
@@ -63,6 +65,16 @@ export default function MyRig() {
   const [activeRigIdx, setActiveRigIdx] = useState(0);
   const [activeComponent, setActiveComponent] = useState(null);
   const [showAddRig, setShowAddRig] = useState(false);
+  // Rig-id being edited, or null. Drives the EditRigModal which
+  // PUTs to /rigs/{id}. After save, the orchestrator bumps
+  // ``reloadKey`` so the header / carousel pick up the new
+  // nickname + jurisdiction.
+  const [editingRigId, setEditingRigId] = useState(null);
+  // AAD id whose mode is being edited (from the rig header's
+  // AAD MODE cell when ``is_changeable_mode`` is True). PUT
+  // /aads/{id} on save; refresh the rig data so the header
+  // picks up the new mode.
+  const [editingAadModeId, setEditingAadModeId] = useState(null);
   // Phase 1: real-data wiring. ``rigShapes`` is the array of
   // denormalized rigs the rendering code expects — each built by
   // buildRigShape from the corresponding real Rig + components +
@@ -303,7 +315,15 @@ export default function MyRig() {
         onConfirm={handleConfirmDelete}
       />
 
-      <RigHeader rig={rig} />
+      <RigHeader
+        rig={rig}
+        onEdit={() => setEditingRigId(rig.id)}
+        onEditAadMode={
+          rig.aad?.id && rig.aad.isChangeableMode
+            ? () => setEditingAadModeId(rig.aad.id)
+            : null
+        }
+      />
       <StatsStrip rig={rig} />
       <Components rig={rig} onClick={setActiveComponent} />
       <UpcomingActions actions={rig.actions} />
@@ -340,6 +360,28 @@ export default function MyRig() {
           // one for the rig that's about to be added.
           setReloadKey((k) => k + 1);
           setActiveRigIdx(rigShapes ? rigShapes.length : 0);
+        }}
+      />
+      <EditRigModal
+        visible={editingRigId !== null}
+        rigId={editingRigId}
+        onClose={() => setEditingRigId(null)}
+        onSaved={() => {
+          setEditingRigId(null);
+          // Refresh so the renamed rig / new jurisdiction shows
+          // immediately. The carousel position is preserved
+          // because we keep ``activeRigIdx`` (the rename doesn't
+          // change ``display_order``).
+          setReloadKey((k) => k + 1);
+        }}
+      />
+      <EditAadModeModal
+        visible={editingAadModeId !== null}
+        aadId={editingAadModeId}
+        onClose={() => setEditingAadModeId(null)}
+        onSaved={() => {
+          setEditingAadModeId(null);
+          setReloadKey((k) => k + 1);
         }}
       />
     </div>
@@ -679,7 +721,7 @@ function DeleteRigConfirm({ rig, deleting, onCancel, onConfirm }) {
 // Combines the status pill row, title, subtitle, and the 4-column
 // headline-metrics strip — separated by hairline vertical rules —
 // into one card that lives above the components grid.
-function RigHeader({ rig }) {
+function RigHeader({ rig, onEdit, onEditAadMode }) {
   const s = STATUS[rig.status];
   // Lineset-aware label.
   let label = STATUS_LABEL[rig.status];
@@ -723,13 +765,40 @@ function RigHeader({ rig }) {
           </span>
         )}
       </div>
-      <h1 className="text-3xl font-medium tracking-tight">{rig.name}</h1>
-      <div className="text-[13px] text-neutral-500 mt-1">
-        {rigContextSubtitle(rig)}
+      <div className="flex items-start justify-between gap-3">
+        <div className="min-w-0 flex-1">
+          <h1 className="text-3xl font-medium tracking-tight">{rig.name}</h1>
+          <div className="text-[13px] text-neutral-500 mt-1">
+            {rigContextSubtitle(rig)}
+          </div>
+        </div>
+        {onEdit && (
+          <button
+            type="button"
+            onClick={onEdit}
+            className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-md text-[12px] font-medium transition hover:bg-neutral-800/50 flex-shrink-0"
+            style={{
+              background: 'var(--surface-2)',
+              color: 'var(--text)',
+              border: '0.5px solid var(--border)',
+            }}
+            aria-label="Edit rig nickname and jurisdiction"
+          >
+            <Pencil className="w-3 h-3" />
+            Edit
+          </button>
+        )}
       </div>
 
+      {/* Headline strip — three columns since 2026-05-15. The
+          "MAIN JUMPS" column was removed because the underlying
+          counter doesn't propagate from logged jumps yet (tracked
+          as a separate task); a column that always reads 0 was
+          misleading rather than informative. When the counter
+          lands it can be re-added between AAD MODE and RESERVE
+          DUE (grid-cols-4 below). */}
       <div
-        className="grid grid-cols-4 mt-6 pt-6"
+        className="grid grid-cols-3 mt-6 pt-6"
         style={{ borderTop: '0.5px solid var(--border)' }}
       >
         <HeadlineMetric
@@ -747,11 +816,13 @@ function RigHeader({ rig }) {
           label="AAD MODE"
           value={rig.aad.mode || '—'}
           foot={rig.aad.brand && rig.aad.model ? `${rig.aad.brand} ${rig.aad.model}` : ''}
-        />
-        <HeadlineMetric
-          label="MAIN JUMPS"
-          value={rig.main.jumps}
-          foot="on canopy"
+          // D34: only some AADs accept a mode swap (Cypres 2,
+          // Vigil 2, M2). When the unit's ``is_changeable_mode``
+          // is True the value renders as a clickable affordance
+          // that opens the small EditAadModeModal; otherwise it
+          // stays static, matching the "you can't change this"
+          // hardware reality.
+          onEdit={onEditAadMode}
         />
         <HeadlineMetric
           label="RESERVE DUE"
@@ -772,7 +843,7 @@ function RigHeader({ rig }) {
 // One column inside the headline-metrics strip. Mono number with
 // a dim unit + small footer line. Hairline vertical rule between
 // columns; first/last skip the rule on the outer side.
-function HeadlineMetric({ label, value, unit, foot, isFirst, isLast }) {
+function HeadlineMetric({ label, value, unit, foot, isFirst, isLast, onEdit }) {
   return (
     <div
       style={{
@@ -781,11 +852,32 @@ function HeadlineMetric({ label, value, unit, foot, isFirst, isLast }) {
         borderRight: isLast ? 'none' : '0.5px solid var(--border)',
       }}
     >
-      <div
-        className="text-[10px] font-medium mb-2"
-        style={{ color: 'var(--text-muted)', letterSpacing: '0.08em', textTransform: 'uppercase' }}
-      >
-        {label}
+      <div className="flex items-center gap-2 mb-2">
+        <div
+          className="text-[10px] font-medium"
+          style={{ color: 'var(--text-muted)', letterSpacing: '0.08em', textTransform: 'uppercase' }}
+        >
+          {label}
+        </div>
+        {/* Inline edit affordance — only renders when the parent
+            supplied an ``onEdit`` callback, signalling that the
+            value is mutable (currently used for AAD MODE on
+            changeable units). Small ghost button so the headline
+            number stays the visual anchor. */}
+        {onEdit && (
+          <button
+            type="button"
+            onClick={onEdit}
+            className="text-[9px] tracking-[0.2em] uppercase font-medium px-1.5 py-0.5 rounded transition hover:bg-neutral-800/50"
+            style={{
+              color: 'var(--text-faint)',
+              border: '0.5px solid var(--border)',
+            }}
+            aria-label={`Edit ${label.toLowerCase()}`}
+          >
+            Edit
+          </button>
+        )}
       </div>
       <div className="font-mono text-[22px] font-medium" style={{ color: 'var(--text)', letterSpacing: '-0.01em' }}>
         {value}

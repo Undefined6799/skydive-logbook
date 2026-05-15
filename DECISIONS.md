@@ -7039,3 +7039,119 @@ the three ``has_*`` flags is false. The wizard never appears when
 - 2026-05-14 conversation that scoped this slice (OB.1 — wizard
   framework + Welcome step + sentinel mechanism; OB.2 through OB.5
   add the per-step forms in subsequent slices).
+
+
+## D66 — `RigUpdate` accepts `repack_history`; narrows D38's R.5 deferral
+
+**Decision.** ``RigUpdate`` accepts an optional ``repack_history``
+field. When present, the rig service writes the supplied list to
+``rigs/<nickname>/rig.xml`` (replacing whatever was on disk). When
+omitted (Pydantic default ``[]``), the merge uses the on-disk
+value untouched — matching the pre-D66 behaviour for legacy
+clients. This narrows D38's "R.5 territory" deferral: jumpers can
+now set or correct their repack history through the regular rig
+edit surface without hand-editing ``rig.xml``.
+
+The R.5 full repack-event flow (atomic append + reserve/AAD
+counter updates + clock recomputation) remains deferred. D66 only
+unlocks the *metadata-shaped* path for editing the history list;
+the cross-component side-effects D38 §Consequences described
+(``repack_count_derived`` bump, AAD fire count) still need R.5 to
+land and are intentionally NOT triggered by this change.
+
+**Why.** D38 chose to defer the WRITE FLOW (event-shaped: append +
+side effects) because the cross-component coordination is a real
+service slice. But the practical consequence — D38 itself flags
+this — is that "a jumper with a freshly-repacked rig who uses
+the service layer alone sees 'next repack due: never' on a rig
+with empty repack_history. To see the clocks, they set the
+initial repack history via RigCreate at onboarding, or hand-edit
+rig.xml afterwards."
+
+For v0.1 that's an actively bad user experience: the alternative
+to a 30-second form field is teaching the user how to open
+rig.xml in a text editor, find the right element, write a date
+in YYYY-MM-DD form, validate it against the XSD, and hope nothing
+else breaks. Most users will give up and the repack clock stays
+broken on their rig.
+
+The narrower fix — accept a replacement list on PUT, no side
+effects — gets the visible-clock case working today without
+prejudicing R.5's design. R.5 can still ship its full append +
+counter-update flow on a dedicated POST endpoint; this PUT path
+remains the "I'm editing my logbook" surface (the same posture
+D31 already takes for jump metadata edits). The two are
+complementary, not in conflict.
+
+**Consequences.**
+
+- ``RigUpdate.repack_history: list[RepackEntry]`` added with
+  default ``[]``. Existing callers that don't send the field get
+  the pre-D66 preserve-from-disk behaviour because the service
+  treats "empty list AND on-disk has entries" as "client didn't
+  intend to clear" — see below.
+- ``update_rig`` distinguishes "client supplied an empty list"
+  from "client supplied the existing list":
+  - Empty payload list + non-empty on-disk → preserve on-disk.
+    (The most common case for clients that pre-date D66 — they
+    just round-trip the rig without sending repack_history.)
+  - Non-empty payload list → replace on-disk verbatim.
+  - Empty payload list + empty on-disk → no-op.
+  This sidesteps the legacy-client-wipes-history footgun while
+  still letting D66-aware clients edit history.
+- ``EditRigModal`` (frontend) renders a "LAST REPACK DATE" date
+  picker. On save, if the date differs from the latest entry's
+  date, the modal builds a new ``repack_history`` array
+  (preserving older entries, replacing/appending the latest)
+  and sends it. The "JURISDICTION" label is renamed to
+  "SEALED UNDER" to match the rig-header subtitle copy.
+- Cross-component side effects (reserve ``ride_count`` bump,
+  AAD fire-count update, ``repack_count_derived`` projection)
+  are unchanged — still R.5 territory. A user who edits the
+  repack date here gets a correct repack clock immediately; the
+  counter side-effects land when R.5 ships.
+- D38's "Consequences" section is updated by superseding (not
+  editing in place): the line "RigUpdate in R.1 does NOT allow
+  modifying repack_history" is now narrowed by D66. The "you
+  have to hand-edit rig.xml" workaround in D38 is no longer
+  the only path.
+
+**Re-evaluation triggers.** This decision flips when any of:
+
+- R.5 lands its dedicated append endpoint. At that point, the
+  rig edit modal can route the date through R.5's POST and stop
+  using the PUT-replacement shortcut. The ``repack_history``
+  field stays on ``RigUpdate`` as the "bulk edit / corrections"
+  surface; R.5 owns the "I just got my rig repacked" event flow.
+- Multi-user lands. The "I'm editing my own logbook" framing
+  weakens when the editor isn't the jumper — the repack event
+  is then an attestation by a rigger, and the structured event
+  flow (R.5) is the right surface, not a PUT replace.
+
+**Alternatives considered.**
+
+- *(Wait for R.5 before letting users edit dates.)* The status
+  quo per D38. Rejected because the wait has no concrete
+  schedule and the alternative is teaching every user to edit
+  XML.
+- *(Add a dedicated PATCH /rigs/{id}/repack-history endpoint.)*
+  More REST-pure but doubles the API surface for one field. The
+  PUT-replace pattern matches the rest of the metadata edits in
+  this codebase (jumps, dropzones, jumpers); consistency wins.
+- *(Always use the payload value, even on an empty list.)*
+  Simpler service code but introduces a footgun: a pre-D66
+  client that PUTs a rig metadata change without sending
+  ``repack_history`` would silently wipe the history. The
+  empty-list-vs-on-disk disambiguation above costs three lines
+  of service code and avoids the footgun entirely.
+
+**References.**
+
+- D31 — jump metadata edit via PUT is the "full replace"
+  pattern this extends to rigs.
+- D38 — original "R.5 territory" deferral; narrowed by D66.
+- D58 — starred rig (similarly service-controlled, doesn't ride
+  on RigUpdate).
+- 2026-05-15 conversation: user observed that the rig edit
+  modal had no way to set the repack date, only the wizard
+  did at create time.
