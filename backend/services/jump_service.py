@@ -17,13 +17,17 @@ Invariants enforced by every write:
 from __future__ import annotations
 
 import contextlib
+import hashlib
 import logging
+import mimetypes
 import os
 import sqlite3
 from collections.abc import Generator, Iterable
 from dataclasses import dataclass
 from pathlib import Path
 from uuid import UUID, uuid4
+
+from pydantic import ValidationError
 
 from ..api.errors import (
     FieldError,
@@ -272,8 +276,6 @@ def create_jump(
         (should not happen with a Pydantic-validated ``Jump``;
         surfaced as a server bug rather than swallowed).
     """
-    from pydantic import ValidationError
-
     uploads_list: list[Upload] = list(uploads) if uploads else []
 
     try:
@@ -610,9 +612,6 @@ def track_files(
         - ``filename_not_in_folder``: a filename has no matching file
           on disk.
     """
-    import hashlib
-    import mimetypes
-
     # Step 1: load the current Jump (validates ownership, parses XML,
     # returns the canonical attachments list).
     jump = get_jump(logbook_root, user_id, jump_id)
@@ -1065,8 +1064,6 @@ def update_jump(
       ``JumpNumberConflict``: new jump_number already taken.
       ``ValidationFailedError``: bad payload or title.
     """
-    from pydantic import ValidationError
-
     # Step 1: fetch current jump.
     current = get_jump(logbook_root, user_id, jump_id)
 

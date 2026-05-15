@@ -25,6 +25,7 @@ Future:
 """
 from __future__ import annotations
 
+import dataclasses
 import json
 from collections.abc import Iterator
 from pathlib import Path
@@ -284,7 +285,7 @@ def list_jump_files_route(
     user_id: str = Depends(get_user_id),
 ) -> list[FolderFileResponse]:
     files = jump_service.list_jump_files(logbook_root, user_id, jump_id)
-    return [FolderFileResponse(**f.__dict__) for f in files]
+    return [FolderFileResponse(**dataclasses.asdict(f)) for f in files]
 
 
 @router.post(
