@@ -2,9 +2,12 @@
 
 Vite + React + Tailwind + Lucide. v0.1 prototype.
 
-The Jumps Log view is wired to the FastAPI backend; everything else
-(My rig, Inventory, Dropzones, Settings) renders against mock data
-until the corresponding backend endpoints land per D33's R.0–R.5 phases.
+Every view and modal is wired to the FastAPI backend — Dashboard,
+Jumps Log, My Rig, Inventory, Dropzones, Identity, Onboarding, and
+Settings (Identity / Verify / Reindex / Updates). The Settings →
+Trash section is the one remaining stub: listing and restoring
+trashed items is not yet implemented end-to-end (no backend
+``GET /api/v1/trash`` route, no UI fetch). Slated for v0.2.
 
 ## Run as one app — single command
 

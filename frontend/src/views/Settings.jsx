@@ -373,18 +373,22 @@ function VerifySection() {
   );
 }
 
+// Trash listing + restore is slated for v0.2. The backend currently
+// has no GET /api/v1/trash or restore endpoint; soft_delete writes
+// to <logbook_root>/.trash/ (D19) but no service surfaces it. Until
+// then this section renders a placeholder so the UI doesn't claim
+// data it can't produce.
 function TrashSection() {
   return (
     <Card className="p-4 px-5 mb-2.5">
-      <div className="flex items-center justify-between">
-        <div>
-          <SectionLabel>TRASH</SectionLabel>
-          <div className="text-[12px] text-neutral-400">
-            <span className="font-mono text-neutral-300">2</span> deleted jumps ·{' '}
-            <span className="font-mono text-neutral-300">1</span> retired component
-          </div>
-        </div>
-        <GhostButton>Open trash</GhostButton>
+      <SectionLabel>TRASH</SectionLabel>
+      <div className="text-[12px] text-neutral-400 leading-relaxed">
+        Deleted jumps and retired components are kept in{' '}
+        <span className="font-mono text-neutral-300">
+          &lt;logbook&gt;/.trash/
+        </span>{' '}
+        on disk (D19). An in-app listing and restore flow is planned
+        for v0.2.
       </div>
     </Card>
   );
