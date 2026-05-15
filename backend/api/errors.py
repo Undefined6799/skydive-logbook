@@ -246,6 +246,27 @@ class ValidationFailedError(ServiceError):
     title = "Validation Failed"
 
 
+class IdempotencyKeyReuseError(ValidationFailedError):
+    """Same ``Idempotency-Key`` header reused with different content (D69).
+
+    The client sent a POST with an ``Idempotency-Key`` whose stored
+    record was created from a request whose D69-compromise hash
+    differs from this one's. Either:
+
+    * the client is reusing the same key across two genuinely
+      different logical operations (the contract is one key per
+      operation), or
+    * the body was tampered with between attempts.
+
+    Stripe uses 422 for this exact scenario; we match. The error
+    payload carries the offending key so the UI can surface a
+    "regenerate your key" affordance.
+    """
+    http_status = 422
+    code = "idempotency_key_reuse"
+    title = "Idempotency Key Reuse"
+
+
 class PayloadTooLargeError(ServiceError):
     """Request body or a single uploaded file exceeded a configured cap.
 

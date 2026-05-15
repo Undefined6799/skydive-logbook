@@ -37,7 +37,7 @@ from .errors import (
 from .jumpers import router as jumpers_router
 from .jumps import router as jumps_router
 from .mains import router as mains_router
-from .middleware import RequestSizeLimitMiddleware
+from .middleware import IdempotencyKeyMiddleware, RequestSizeLimitMiddleware
 from .onboarding import router as onboarding_router
 from .openapi import custom_openapi
 from .ops import router as ops_router
@@ -95,6 +95,18 @@ def create_app(*, mount_frontend: bool = True) -> FastAPI:
     app.add_middleware(
         RequestSizeLimitMiddleware,
         max_bytes=_settings_at_build.max_request_bytes,
+    )
+
+    # Slice 12 (D69): Idempotency-Key replay / reuse-rejection. Sits
+    # INSIDE the size middleware so an oversize request is 413'd
+    # before it touches the idempotency table. The middleware is
+    # active for POSTs only; other methods fall through unchanged.
+    # Reads ``logbook_root`` once at build time — tests override the
+    # bound middleware by patching ``get_settings`` (matches the
+    # RequestSizeLimit pattern).
+    app.add_middleware(
+        IdempotencyKeyMiddleware,
+        logbook_root=_settings_at_build.logbook_root,
     )
 
     # CORS for the Vite dev server (frontend/) running on a different

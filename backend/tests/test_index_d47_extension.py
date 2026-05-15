@@ -61,7 +61,7 @@ def bootstrapped_root(tmp_path: Path) -> Path:
 # --------------------------------------------------------------------- #
 
 class TestSchemaVersion:
-    def test_current_schema_version_is_10(self) -> None:
+    def test_current_schema_version_is_11(self) -> None:
         # If a future contributor bumps INDEX_SCHEMA_VERSION without
         # updating this test, the bump documentation in index.py is
         # the single source of truth — adjust the assertion in the
@@ -69,7 +69,8 @@ class TestSchemaVersion:
         # v8 → v9 (D54, Phase 2b): added the ``people`` table.
         # v9 → v10 (D60): added ``dropzone_id`` column on jumps and
         # ``starred`` column on dropzones — see index.py header.
-        assert INDEX_SCHEMA_VERSION == 10
+        # v10 → v11 (D69, Slice 12): added ``idempotency_keys`` table.
+        assert INDEX_SCHEMA_VERSION == 11
 
     def test_fresh_index_has_current_tables(self, bootstrapped_root: Path) -> None:
         result = open_index(bootstrapped_root)

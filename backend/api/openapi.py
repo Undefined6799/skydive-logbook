@@ -81,6 +81,7 @@ PROBLEM_DETAILS_SCHEMA: dict[str, Any] = {
                 "not_found",
                 "conflict",
                 "validation_failed",
+                "idempotency_key_reuse",
                 "internal_error",
                 "integrity_error",
             ],

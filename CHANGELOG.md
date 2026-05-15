@@ -14,6 +14,23 @@ addenda; tracked as "Wave A" + "Wave B" in
 ``reviews/2026-05-15-slice-plan.md``.
 
 ### Added — backend
+- **``Idempotency-Key`` middleware** (Slice 12, D69). New
+  ``backend/api/middleware.py:IdempotencyKeyMiddleware``
+  intercepts POSTs that carry an ``Idempotency-Key`` request
+  header: matching-key + matching-content replays the stored
+  201 response verbatim (no re-execution); matching-key +
+  differing-content returns 422 with
+  ``code=idempotency_key_reuse``. The compromise hash —
+  ``sha256(method + path + user_id + content_length + first 4
+  KiB of body)`` — is O(1) regardless of upload size, so a 4 GiB
+  video retry never re-hashes the full body. 24 h TTL with
+  opportunistic ``DELETE WHERE expires_at < now()`` per request.
+  New SQLite table ``idempotency_keys`` (schema v11; D3 carved
+  exception because the table caches HTTP responses, not XML
+  data). New ``IdempotencyKeyReuseError`` typed exception
+  (subclass of ``ValidationFailedError``, code
+  ``idempotency_key_reuse``). Thirteen pinning tests in
+  ``test_idempotency_key.py``.
 - **Partial-write crash-recovery matrix** (Slice 9). New
   ``backend/tests/test_partial_write_recovery.py`` ships
   eleven in-process monkeypatch crash tests covering the
@@ -164,6 +181,7 @@ addenda; tracked as "Wave A" + "Wave B" in
 ### Documentation
 - ``DECISIONS.md``: D67 (exception redaction policy) +
   D68 (newer-on-disk refusal) +
+  D69 (Idempotency-Key middleware contract) +
   D70 (rig partial-create forward-complete policy).
 - New audit / verification documents under ``reviews/``:
   ``2026-05-15-code-debt-deep-audit.md``,
