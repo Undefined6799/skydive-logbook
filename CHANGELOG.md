@@ -14,6 +14,21 @@ addenda; tracked as "Wave A" + "Wave B" in
 ``reviews/2026-05-15-slice-plan.md``.
 
 ### Added — backend
+- **Rig partial-create recovery** (Slice 7, D70). New
+  ``backend/services/rig_reconcile_service.py:folder_reconcile_rigs``
+  heals the D37 bidirectional rig ↔ component invariant left
+  inconsistent by a ``create_rig`` crash between the rig.xml
+  write and the component-assignment loop (deep-dive §8.1). The
+  policy is **forward-complete** — the rig.xml is the
+  authoritative statement of intent, so each component the rig
+  references gets ``assigned_rig_id`` set to the rig. Components
+  whose ``assigned_rig_id`` points at a missing rig (or a rig
+  that doesn't reference back) are cleared. Boot-time wiring in
+  ``main.py`` after ``open_index`` / reindex; idempotent and
+  cheap on a healthy logbook. Nine pinning tests in
+  ``test_rig_partial_create_recovery.py`` covering the clean
+  case, the partial-create scenario, orphan cleanup, conflict
+  detection, and invalid-folder tolerance.
 - **Configurable CORS allow-list** (Slice 21).
   ``Settings.cors_allowed_origins: list[str]`` (env
   ``SKYDIVE_CORS_ALLOWED_ORIGINS``, JSON-encoded list) replaces
@@ -132,7 +147,8 @@ addenda; tracked as "Wave A" + "Wave B" in
 
 ### Documentation
 - ``DECISIONS.md``: D67 (exception redaction policy) +
-  D68 (newer-on-disk refusal).
+  D68 (newer-on-disk refusal) +
+  D70 (rig partial-create forward-complete policy).
 - New audit / verification documents under ``reviews/``:
   ``2026-05-15-code-debt-deep-audit.md``,
   ``2026-05-15-chatgpt-findings-deep-dive.md``,
