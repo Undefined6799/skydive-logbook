@@ -328,8 +328,12 @@ class JsApi:
         import webview  # pyright: ignore[reportMissingImports]  # late import — pywebview is the optional [desktop] extra
         if not webview.windows:
             return {"path": None, "requires_restart": False}
+        # pywebview 6.2 deprecated the module-level ``FOLDER_DIALOG``
+        # constant in favour of the ``FileDialog`` enum. The runtime
+        # value is unchanged (int 20); the new symbol just survives
+        # the eventual removal.
         result = webview.windows[0].create_file_dialog(
-            webview.FOLDER_DIALOG,  # pyright: ignore[reportArgumentType]  # pywebview 6.2.1 stubs type FOLDER_DIALOG as module_property; runtime int
+            webview.FileDialog.FOLDER,
             allow_multiple=False,
         )
         if not result:
@@ -492,8 +496,10 @@ def _setup_first_run(window) -> Path:
         "document.getElementById('msg').textContent = 'Choose your logbook folder\u2026';"
     )
     import webview  # pyright: ignore[reportMissingImports]  # pywebview is the optional [desktop] extra
+    # pywebview 6.2 deprecated ``FOLDER_DIALOG``; ``FileDialog.FOLDER``
+    # is the surviving symbol — same runtime int 20.
     chosen = window.create_file_dialog(
-        webview.FOLDER_DIALOG,
+        webview.FileDialog.FOLDER,
         directory=str(Path.home()),
         allow_multiple=False,
     )

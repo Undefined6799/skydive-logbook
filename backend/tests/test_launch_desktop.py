@@ -490,10 +490,11 @@ class TestFirstRunFolderPicker:
         self, tmp_path: Path, monkeypatch
     ):
         # Pin: the picker must be opened with
-        # ``allow_multiple=False`` and the FOLDER_DIALOG marker.
-        # A regression that flips to FILE_DIALOG would let users
+        # ``allow_multiple=False`` and the FOLDER marker. A
+        # regression that flips to a FILE marker would let users
         # pick a *file* as the logbook root — broken on the very
-        # next launch.
+        # next launch. Tracks pywebview 6.2's deprecation of
+        # ``FOLDER_DIALOG`` in favour of ``FileDialog.FOLDER``.
         cfg = tmp_path / "config.toml"
         chosen = tmp_path / "Logbook"
         chosen.mkdir()
@@ -501,7 +502,7 @@ class TestFirstRunFolderPicker:
             launch_desktop, "config_file_path", lambda: cfg
         )
         fake_webview = mock.MagicMock()
-        fake_webview.FOLDER_DIALOG = "FOLDER"  # sentinel
+        fake_webview.FileDialog.FOLDER = "FOLDER"  # sentinel
         monkeypatch.setitem(sys.modules, "webview", fake_webview)
 
         window = self._make_window_stub(picker_returns=[str(chosen)])
