@@ -339,13 +339,17 @@ def add_cop_to_jumper(
         logbook_root, jumper, cops=[*jumper.cops, cop]
     )
 
+    # ``level`` collides with ``LogRecord.level`` and is rejected by
+    # D27's reserved-field guard. Use ``cop_level`` instead — same
+    # data, namespaced to the credential so the operator-visible
+    # log entry still distinguishes "USPA A" from "CSPA B".
     _logger.info(
         "jumper_cop_added",
         extra={
             "jumper_id": str(jumper_id),
             "cop_id": str(cop.id),
             "org": cop.org.value,
-            "level": cop.level,
+            "cop_level": cop.level,
         },
     )
     return updated
@@ -382,13 +386,15 @@ def update_cop_on_jumper(
         logbook_root, jumper, cops=new_cops
     )
 
+    # See ``add_cop_to_jumper`` — ``level`` collides with
+    # ``LogRecord.level``; namespace as ``cop_level``.
     _logger.info(
         "jumper_cop_updated",
         extra={
             "jumper_id": str(jumper_id),
             "cop_id": str(cop_id),
             "org": replaced.org.value,
-            "level": replaced.level,
+            "cop_level": replaced.level,
         },
     )
     return updated
