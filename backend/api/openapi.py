@@ -130,12 +130,18 @@ def custom_openapi(app: FastAPI) -> dict[str, Any]:
     # Shared response declaration so endpoints can reference it with a single
     # line (`responses={"404": {"$ref": "#/components/responses/NotFound"}}`).
     # Defined once, so every error-returning path agrees on the media type.
+    #
+    # ``Internal`` covers the catch-all ``InternalServerError`` raised by
+    # rest.py's ``@app.exception_handler(Exception)``; ``IntegrityError``
+    # covers the typed ``IntegrityError`` ServiceError used by D2 read
+    # paths when XSD validation fails on a record already on disk.
     responses = components.setdefault("responses", {})
     for code_ref, http_status, title in [
         ("NotFound",         404, "Not Found"),
         ("Conflict",         409, "Conflict"),
         ("ValidationFailed", 422, "Validation Failed"),
         ("IntegrityError",   500, "Integrity Error"),
+        ("Internal",         500, "Internal Server Error"),
     ]:
         responses[code_ref] = {
             "description": f"{title} ({http_status}). Body is RFC 9457 problem+json.",
@@ -148,3 +154,59 @@ def custom_openapi(app: FastAPI) -> dict[str, Any]:
 
     app.openapi_schema = schema
     return schema
+
+
+# ---------------------------------------------------------------------------#
+# Per-route ``responses=`` helpers
+# ---------------------------------------------------------------------------#
+#
+# FastAPI auto-generates a 200/201 entry per route plus a default 422 for
+# body validation. Neither matches our RFC 9457 wire shape. Each route
+# attaches one of the dicts below via ``@router.get/post/...(..., responses=ERR_*)``
+# to surface the actual error envelopes its handlers can produce.
+#
+# Naming convention:
+#   * ERR_READ    — GET-by-id: 404 + 500
+#   * ERR_LIST    — GET-list: 500 (validation is on query params handled
+#                   by FastAPI's default 422 envelope; until the
+#                   RequestValidationError handler ships, listing this
+#                   would advertise two different 422 shapes)
+#   * ERR_CREATE  — POST: 409 (conflict / dup), 422, 500
+#   * ERR_UPDATE  — PUT / PATCH: 404, 409, 422, 500
+#   * ERR_DELETE  — DELETE: 404, 500
+#
+# A single literal type ``dict[str, dict]`` keeps the values simple — the
+# ``$ref`` pointer is the entire payload.
+
+def _ref(name: str) -> dict[str, str]:
+    """JSON Pointer to a reusable response declared in ``custom_openapi``.
+
+    Indirection so the FastAPI route decorator gets a plain ``dict``
+    payload, not a ``Reference`` model — the schema's
+    ``$ref`` member is what get_openapi serializes through.
+    """
+    return {"$ref": f"#/components/responses/{name}"}
+
+
+ERR_READ: dict[str | int, dict[str, Any]] = {
+    "404": _ref("NotFound"),
+    "500": _ref("Internal"),
+}
+ERR_LIST: dict[str | int, dict[str, Any]] = {
+    "500": _ref("Internal"),
+}
+ERR_CREATE: dict[str | int, dict[str, Any]] = {
+    "409": _ref("Conflict"),
+    "422": _ref("ValidationFailed"),
+    "500": _ref("Internal"),
+}
+ERR_UPDATE: dict[str | int, dict[str, Any]] = {
+    "404": _ref("NotFound"),
+    "409": _ref("Conflict"),
+    "422": _ref("ValidationFailed"),
+    "500": _ref("Internal"),
+}
+ERR_DELETE: dict[str | int, dict[str, Any]] = {
+    "404": _ref("NotFound"),
+    "500": _ref("Internal"),
+}

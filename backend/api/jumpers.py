@@ -61,6 +61,7 @@ from ..models.jumper import (
 from ..services import jumper_credential_service, jumper_service
 from ..services.jumper_service import Upload
 from .deps import get_logbook_root, get_user_id
+from .openapi import ERR_CREATE, ERR_DELETE, ERR_LIST, ERR_READ, ERR_UPDATE
 
 router = APIRouter(prefix="/api/v1/jumpers", tags=["jumpers"])
 
@@ -90,6 +91,8 @@ def _upload_chunks(upload: UploadFile) -> Iterator[bytes]:
 @router.post(
     "",
     response_model=Jumper,
+    operation_id="create_jumper",
+    responses=ERR_CREATE,
     status_code=status.HTTP_201_CREATED,
     summary="Create a jumper",
     description=(
@@ -119,6 +122,8 @@ def create_jumper_route(
 @router.get(
     "",
     response_model=list[Jumper],
+    operation_id="list_jumpers",
+    responses=ERR_LIST,
     summary="List jumpers",
     description=(
         "Return every jumper under ``jumpers/``, newest first by "
@@ -142,6 +147,8 @@ def list_jumpers_route(
 @router.get(
     "/{jumper_id}",
     response_model=Jumper,
+    operation_id="get_jumper",
+    responses=ERR_READ,
     summary="Read a jumper by id",
     description=(
         "Fetch the full jumper including every optional field. The "
@@ -162,6 +169,8 @@ def get_jumper_route(
 @router.put(
     "/{jumper_id}",
     response_model=Jumper,
+    operation_id="update_jumper",
+    responses=ERR_UPDATE,
     summary="Update a jumper",
     description=(
         "Full replace. Body is JSON matching ``JumperUpdate`` — every "
@@ -191,6 +200,8 @@ def update_jumper_route(
 @router.delete(
     "/{jumper_id}",
     status_code=status.HTTP_204_NO_CONTENT,
+    operation_id="delete_jumper",
+    responses=ERR_DELETE,
     response_class=Response,
     summary="Soft-delete a jumper (D19)",
     description=(
@@ -218,6 +229,8 @@ def delete_jumper_route(
 @router.post(
     "/{jumper_id}/attachments",
     response_model=Jumper,
+    operation_id="add_jumper_attachment",
+    responses=ERR_UPDATE,
     summary="Attach one file (credential card / medical) to a jumper (D47)",
     description=(
         "Multipart POST that streams one uploaded file into the "
@@ -262,6 +275,8 @@ def add_attachment_route(
 @router.delete(
     "/{jumper_id}/attachments/{attachment_id}",
     response_model=Jumper,
+    operation_id="delete_jumper_attachment",
+    responses=ERR_DELETE,
     summary="Remove one attachment from a jumper (D47)",
     description=(
         "Hard-delete one attachment: removes the ``<attachment>`` "
@@ -300,6 +315,8 @@ def delete_attachment_route(
 @router.post(
     "/{jumper_id}/memberships",
     response_model=Jumper,
+    operation_id="add_jumper_membership",
+    responses=ERR_UPDATE,
     status_code=status.HTTP_201_CREATED,
     summary="Add a federation membership to a jumper (D47)",
     description=(
@@ -332,6 +349,8 @@ def add_membership_route(
 @router.put(
     "/{jumper_id}/memberships/{membership_id}",
     response_model=Jumper,
+    operation_id="update_jumper_membership",
+    responses=ERR_UPDATE,
     summary="Replace one membership by id (D47)",
     description=(
         "Full-replace one membership in the jumper's list. The "
@@ -357,6 +376,8 @@ def update_membership_route(
 @router.delete(
     "/{jumper_id}/memberships/{membership_id}",
     response_model=Jumper,
+    operation_id="delete_jumper_membership",
+    responses=ERR_DELETE,
     summary="Remove one membership by id (D47)",
     description=(
         "Hard-delete one membership from the jumper's list. The "
@@ -383,6 +404,8 @@ def delete_membership_route(
 @router.post(
     "/{jumper_id}/cops",
     response_model=Jumper,
+    operation_id="add_jumper_cop",
+    responses=ERR_UPDATE,
     status_code=status.HTTP_201_CREATED,
     summary="Add a Certificate of Proficiency / license to a jumper (D47)",
     description=(
@@ -407,6 +430,8 @@ def add_cop_route(
 @router.put(
     "/{jumper_id}/cops/{cop_id}",
     response_model=Jumper,
+    operation_id="update_jumper_cop",
+    responses=ERR_UPDATE,
     summary="Replace one CoP by id (D47)",
 )
 def update_cop_route(
@@ -424,6 +449,8 @@ def update_cop_route(
 @router.delete(
     "/{jumper_id}/cops/{cop_id}",
     response_model=Jumper,
+    operation_id="delete_jumper_cop",
+    responses=ERR_DELETE,
     summary="Remove one CoP by id (D47)",
 )
 def delete_cop_route(
@@ -444,6 +471,8 @@ def delete_cop_route(
 @router.post(
     "/{jumper_id}/ratings",
     response_model=Jumper,
+    operation_id="add_jumper_rating",
+    responses=ERR_UPDATE,
     status_code=status.HTTP_201_CREATED,
     summary="Add a federation-issued rating to a jumper (D47)",
     description=(
@@ -469,6 +498,8 @@ def add_rating_route(
 @router.put(
     "/{jumper_id}/ratings/{rating_id}",
     response_model=Jumper,
+    operation_id="update_jumper_rating",
+    responses=ERR_UPDATE,
     summary="Replace one federation rating by id (D47)",
 )
 def update_rating_route(
@@ -486,6 +517,8 @@ def update_rating_route(
 @router.delete(
     "/{jumper_id}/ratings/{rating_id}",
     response_model=Jumper,
+    operation_id="delete_jumper_rating",
+    responses=ERR_DELETE,
     summary="Remove one federation rating by id (D47)",
 )
 def delete_rating_route(
@@ -506,6 +539,8 @@ def delete_rating_route(
 @router.post(
     "/{jumper_id}/tandem-ratings",
     response_model=Jumper,
+    operation_id="add_jumper_tandem_rating",
+    responses=ERR_UPDATE,
     status_code=status.HTTP_201_CREATED,
     summary="Add a manufacturer-issued tandem instructor rating (D47)",
     description=(
@@ -531,6 +566,8 @@ def add_tandem_rating_route(
 @router.put(
     "/{jumper_id}/tandem-ratings/{tandem_rating_id}",
     response_model=Jumper,
+    operation_id="update_jumper_tandem_rating",
+    responses=ERR_UPDATE,
     summary="Replace one tandem rating by id (D47)",
 )
 def update_tandem_rating_route(
@@ -548,6 +585,8 @@ def update_tandem_rating_route(
 @router.delete(
     "/{jumper_id}/tandem-ratings/{tandem_rating_id}",
     response_model=Jumper,
+    operation_id="delete_jumper_tandem_rating",
+    responses=ERR_DELETE,
     summary="Remove one tandem rating by id (D47)",
 )
 def delete_tandem_rating_route(
@@ -564,6 +603,8 @@ def delete_tandem_rating_route(
 @router.patch(
     "/{jumper_id}/tandem-ratings/{tandem_rating_id}/currency-reset",
     response_model=Jumper,
+    operation_id="reset_jumper_tandem_currency",
+    responses=ERR_UPDATE,
     summary="Declare current after a supervised re-currency jump (D47)",
     description=(
         "Stamps ``currency_reset_at`` on the tandem rating to "
@@ -600,6 +641,8 @@ def reset_tandem_rating_currency_route(
 @router.post(
     "/{jumper_id}/medicals",
     response_model=Jumper,
+    operation_id="add_jumper_medical",
+    responses=ERR_UPDATE,
     status_code=status.HTTP_201_CREATED,
     summary="Add a government-issued aviation medical to a jumper (D47)",
     description=(
@@ -624,6 +667,8 @@ def add_medical_route(
 @router.put(
     "/{jumper_id}/medicals/{medical_id}",
     response_model=Jumper,
+    operation_id="update_jumper_medical",
+    responses=ERR_UPDATE,
     summary="Replace one medical by id (D47)",
 )
 def update_medical_route(
@@ -641,6 +686,8 @@ def update_medical_route(
 @router.delete(
     "/{jumper_id}/medicals/{medical_id}",
     response_model=Jumper,
+    operation_id="delete_jumper_medical",
+    responses=ERR_DELETE,
     summary="Remove one medical by id (D47)",
 )
 def delete_medical_route(

@@ -39,6 +39,7 @@ from ..models.jump import Jump, JumpCreate, JumpSummary, JumpUpdate
 from ..services import jump_service
 from ..services.jump_service import Upload
 from .deps import get_logbook_root, get_user_id
+from .openapi import ERR_CREATE, ERR_DELETE, ERR_LIST, ERR_READ, ERR_UPDATE
 
 
 class FolderFileResponse(BaseModel):
@@ -133,6 +134,8 @@ def _parse_jump_field(raw: str) -> JumpCreate:
     "",
     response_model=Jump,
     status_code=status.HTTP_201_CREATED,
+    operation_id="create_jump",
+    responses=ERR_CREATE,
     summary="Create a jump",
     description=(
         "Persist a new jump, optionally with attachments. Request body "
@@ -193,6 +196,8 @@ def create_jump_route(
 @router.get(
     "",
     response_model=list[JumpSummary],
+    operation_id="list_jumps",
+    responses=ERR_LIST,
     summary="List jumps",
     description=(
         "Return jumps in reverse-chronological order (``date DESC, "
@@ -222,6 +227,8 @@ def list_jumps_route(
 @router.get(
     "/{jump_id}",
     response_model=Jump,
+    operation_id="get_jump",
+    responses=ERR_READ,
     summary="Read a jump by id",
     description=(
         "Fetch the full jump including every optional field that was "
@@ -242,6 +249,8 @@ def get_jump_route(
 @router.put(
     "/{jump_id}",
     response_model=Jump,
+    operation_id="update_jump",
+    responses=ERR_UPDATE,
     summary="Update a jump (metadata only, D31)",
     description=(
         "Replace the metadata of an existing jump. Request body is "
@@ -267,6 +276,8 @@ def update_jump_route(
 @router.get(
     "/{jump_id}/files",
     response_model=list[FolderFileResponse],
+    operation_id="list_jump_files",
+    responses=ERR_READ,
     summary="List every user-facing file in a jump folder",
     description=(
         "Combines the canonical ``<attachments>`` list from "
@@ -291,6 +302,8 @@ def list_jump_files_route(
 @router.post(
     "/{jump_id}/attachments",
     response_model=Jump,
+    operation_id="add_jump_attachments",
+    responses=ERR_UPDATE,
     summary="Add new attachments to an existing jump (D42)",
     description=(
         "Multipart POST that appends uploaded files to an existing "
@@ -324,6 +337,8 @@ def add_attachments_route(
 @router.post(
     "/{jump_id}/attachments/track",
     response_model=Jump,
+    operation_id="track_jump_files",
+    responses=ERR_UPDATE,
     summary="Adopt files already in the folder into the manifest (D41)",
     description=(
         "Take filenames already present in the jump folder and ingest "
@@ -352,6 +367,8 @@ def track_files_route(
 @router.delete(
     "/{jump_id}/attachments/{filename}",
     response_model=Jump,
+    operation_id="delete_jump_attachment",
+    responses=ERR_DELETE,
     summary="Remove a single attachment from a jump (D43)",
     description=(
         "Hard-deletes one tracked attachment. Updates ``jump.xml`` "
@@ -377,6 +394,8 @@ def delete_attachment_route(
     "/{jump_id}",
     status_code=status.HTTP_204_NO_CONTENT,
     response_class=Response,
+    operation_id="delete_jump",
+    responses=ERR_DELETE,
     summary="Soft-delete a jump (D19)",
     description=(
         "Move the jump folder to ``.trash/<timestamp>_<name>/`` and "

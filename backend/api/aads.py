@@ -27,6 +27,7 @@ from fastapi import APIRouter, Depends, Query, Response, status
 from ..models.aad import AAD, AADCreate, AADUpdate
 from ..services import aad_service
 from .deps import get_logbook_root, get_user_id
+from .openapi import ERR_CREATE, ERR_DELETE, ERR_LIST, ERR_READ, ERR_UPDATE
 
 router = APIRouter(prefix="/api/v1/aads", tags=["aads"])
 
@@ -34,6 +35,8 @@ router = APIRouter(prefix="/api/v1/aads", tags=["aads"])
 @router.post(
     "",
     response_model=AAD,
+    operation_id="create_aad",
+    responses=ERR_CREATE,
     status_code=status.HTTP_201_CREATED,
     summary="Create an AAD",
     description=(
@@ -57,6 +60,8 @@ def create_aad_route(
 @router.get(
     "",
     response_model=list[AAD],
+    operation_id="list_aads",
+    responses=ERR_LIST,
     summary="List AADs",
     description=(
         "Return every AAD newest first by ``created_at``. Walks "
@@ -78,6 +83,8 @@ def list_aads_route(
 @router.get(
     "/{aad_id}",
     response_model=AAD,
+    operation_id="get_aad",
+    responses=ERR_READ,
     summary="Read an AAD by id",
     description=(
         "Fetch the full AAD. XSD-validated through the hardened "
@@ -96,6 +103,8 @@ def get_aad_route(
 @router.put(
     "/{aad_id}",
     response_model=AAD,
+    operation_id="update_aad",
+    responses=ERR_UPDATE,
     summary="Update an AAD",
     description=(
         "Full replace. ``id`` and ``created_at`` preserved server-"
@@ -116,6 +125,8 @@ def update_aad_route(
 @router.delete(
     "/{aad_id}",
     status_code=status.HTTP_204_NO_CONTENT,
+    operation_id="delete_aad",
+    responses=ERR_DELETE,
     response_class=Response,
     summary="Soft-delete an AAD (D19)",
     description=(

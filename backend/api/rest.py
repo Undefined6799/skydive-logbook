@@ -216,7 +216,14 @@ def create_app(*, mount_frontend: bool = True) -> FastAPI:
         response.headers["X-Request-Id"] = str(request_id)
         return response
 
-    @app.get("/api/v1/health", tags=["meta"])
+    @app.get(
+        "/api/v1/health",
+        tags=["meta"],
+        operation_id="health",
+        # Health intentionally declares no error responses — a 5xx
+        # here is itself the health signal (and gets the catch-all
+        # problem+json envelope from on_unhandled_exception).
+    )
     async def health() -> dict[str, str]:  # pyright: ignore[reportUnusedFunction]  # registered via @app.get
         """Liveness probe. Returns `{"status": "ok"}` when the API is up."""
         return {"status": "ok"}

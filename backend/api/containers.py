@@ -33,6 +33,7 @@ from fastapi import APIRouter, Depends, Query, Response, status
 from ..models.container import Container, ContainerCreate, ContainerUpdate
 from ..services import container_service
 from .deps import get_logbook_root, get_user_id
+from .openapi import ERR_CREATE, ERR_DELETE, ERR_LIST, ERR_READ, ERR_UPDATE
 
 router = APIRouter(prefix="/api/v1/containers", tags=["containers"])
 
@@ -40,6 +41,8 @@ router = APIRouter(prefix="/api/v1/containers", tags=["containers"])
 @router.post(
     "",
     response_model=Container,
+    operation_id="create_container",
+    responses=ERR_CREATE,
     status_code=status.HTTP_201_CREATED,
     summary="Create a container",
     description=(
@@ -65,6 +68,8 @@ def create_container_route(
 @router.get(
     "",
     response_model=list[Container],
+    operation_id="list_containers",
+    responses=ERR_LIST,
     summary="List containers",
     description=(
         "Return every container under ``inventory/containers/``, "
@@ -89,6 +94,8 @@ def list_containers_route(
 @router.get(
     "/{container_id}",
     response_model=Container,
+    operation_id="get_container",
+    responses=ERR_READ,
     summary="Read a container by id",
     description=(
         "Fetch the full container including every optional field. "
@@ -109,6 +116,8 @@ def get_container_route(
 @router.put(
     "/{container_id}",
     response_model=Container,
+    operation_id="update_container",
+    responses=ERR_UPDATE,
     summary="Update a container",
     description=(
         "Full replace. Body is JSON matching ``ContainerUpdate`` — "
@@ -135,6 +144,8 @@ def update_container_route(
 @router.delete(
     "/{container_id}",
     status_code=status.HTTP_204_NO_CONTENT,
+    operation_id="delete_container",
+    responses=ERR_DELETE,
     response_class=Response,
     summary="Soft-delete a container (D19)",
     description=(

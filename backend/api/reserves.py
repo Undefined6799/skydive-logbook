@@ -26,6 +26,7 @@ from fastapi import APIRouter, Depends, Query, Response, status
 from ..models.reserve import Reserve, ReserveCreate, ReserveUpdate
 from ..services import reserve_service
 from .deps import get_logbook_root, get_user_id
+from .openapi import ERR_CREATE, ERR_DELETE, ERR_LIST, ERR_READ, ERR_UPDATE
 
 router = APIRouter(prefix="/api/v1/reserves", tags=["reserves"])
 
@@ -33,6 +34,8 @@ router = APIRouter(prefix="/api/v1/reserves", tags=["reserves"])
 @router.post(
     "",
     response_model=Reserve,
+    operation_id="create_reserve",
+    responses=ERR_CREATE,
     status_code=status.HTTP_201_CREATED,
     summary="Create a reserve",
     description=(
@@ -55,6 +58,8 @@ def create_reserve_route(
 @router.get(
     "",
     response_model=list[Reserve],
+    operation_id="list_reserves",
+    responses=ERR_LIST,
     summary="List reserves",
     description=(
         "Return every reserve newest first by ``created_at``. Walks "
@@ -75,6 +80,8 @@ def list_reserves_route(
 @router.get(
     "/{reserve_id}",
     response_model=Reserve,
+    operation_id="get_reserve",
+    responses=ERR_READ,
     summary="Read a reserve by id",
     description=(
         "Fetch the full reserve including the recert_extensions log. "
@@ -92,6 +99,8 @@ def get_reserve_route(
 @router.put(
     "/{reserve_id}",
     response_model=Reserve,
+    operation_id="update_reserve",
+    responses=ERR_UPDATE,
     summary="Update a reserve",
     description=(
         "Full replace. Clients append a recert extension by sending "
@@ -113,6 +122,8 @@ def update_reserve_route(
 @router.delete(
     "/{reserve_id}",
     status_code=status.HTTP_204_NO_CONTENT,
+    operation_id="delete_reserve",
+    responses=ERR_DELETE,
     response_class=Response,
     summary="Soft-delete a reserve (D19)",
     description=(
