@@ -14,6 +14,22 @@ addenda; tracked as "Wave A" + "Wave B" in
 ``reviews/2026-05-15-slice-plan.md``.
 
 ### Added — backend
+- **Partial-write crash-recovery matrix** (Slice 9). New
+  ``backend/tests/test_partial_write_recovery.py`` ships
+  eleven in-process monkeypatch crash tests covering the
+  write paths the audit named as uncovered: ``add_attachments``
+  (orphan file before jump.xml; stale manifest after jump.xml),
+  ``delete_attachment`` (orphan file before unlink),
+  ``delete_rig`` D37 cascade (one component cleared mid-loop,
+  with retry-completes and boot-reconcile-rebinds variants),
+  ``update_rig`` folder-rename (XML written, rename failed),
+  ``track_files`` size/hash race (deep-dive §8.3),
+  ``migrate_all_jumpers`` (audit §2.3 — two crash-injection
+  variants complementing the existing constructed-state
+  tests). Each test asserts (a) the documented partial
+  state, (b) next-public-read converges without raising,
+  (c) where applicable ``reindex_from_xml`` /
+  ``folder_reconcile_rigs`` heals.
 - **Rig partial-create recovery** (Slice 7, D70). New
   ``backend/services/rig_reconcile_service.py:folder_reconcile_rigs``
   heals the D37 bidirectional rig ↔ component invariant left
