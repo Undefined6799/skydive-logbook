@@ -12,9 +12,11 @@ import traceback
 from pathlib import Path
 
 from fastapi import FastAPI, Request
+from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from fastapi.staticfiles import StaticFiles
+from starlette.exceptions import HTTPException as StarletteHTTPException
 
 from backend.observability.logging import CorrelationIdMiddleware
 
@@ -23,9 +25,13 @@ from .containers import router as containers_router
 from .deps import get_settings
 from .dropzones import router as dropzones_router
 from .errors import (
+    FieldError,
     InternalServerError,
+    NotFoundError,
     ServiceError,
+    ValidationFailedError,
     error_response,
+    field_pointer,
     request_id_of,
 )
 from .jumpers import router as jumpers_router
@@ -121,6 +127,112 @@ def create_app(*, mount_frontend: bool = True) -> FastAPI:
             instance=request.url.path,
         )
 
+    @app.exception_handler(RequestValidationError)
+    async def on_request_validation_error(  # pyright: ignore[reportUnusedFunction]  # registered via decorator
+        request: Request, exc: RequestValidationError
+    ) -> JSONResponse:
+        """Normalise FastAPI body / query / path validation errors to D16.
+
+        FastAPI's default ``RequestValidationError`` handler returns
+        ``application/json`` with shape ``{"detail": [...errors]}`` —
+        a different envelope from the RFC 9457 problem+json bodies
+        every ``ServiceError`` produces. The narrow reading of D16
+        the codebase admitted to (FastAPI's path-param 422s "retain
+        their own default") becomes the full reading here: every 4xx
+        on the wire is problem+json with ``code`` /
+        ``request_id`` / ``errors[]`` per D16.
+
+        Each Pydantic error becomes a :class:`FieldError` whose
+        ``pointer`` is the RFC 6901 JSON Pointer built from the
+        error's ``loc`` tuple (same translation
+        :func:`validation_failed_from_pydantic` in ``errors.py``
+        already performs for service-layer Pydantic errors).
+        """
+        field_errors: list[FieldError] = [
+            FieldError(
+                pointer=field_pointer(*err.get("loc", ())),
+                detail=err.get("msg", "invalid value"),
+            )
+            for err in exc.errors()
+        ]
+        typed = ValidationFailedError(
+            "request validation failed", errors=field_errors
+        )
+        # Same log/header pattern as on_service_error.
+        _logger.warning(
+            "service_error",
+            extra={"code": typed.code, "http_status": typed.http_status},
+        )
+        return error_response(
+            typed,
+            request_id=request_id_of(request),
+            instance=request.url.path,
+        )
+
+    @app.exception_handler(StarletteHTTPException)
+    async def on_http_exception(  # pyright: ignore[reportUnusedFunction]  # registered via decorator
+        request: Request, exc: StarletteHTTPException
+    ) -> JSONResponse:
+        """Normalise Starlette ``HTTPException`` to D16 problem+json.
+
+        Starlette raises ``HTTPException`` for routing-level failures
+        the application code never sees: 404 on an unknown path, 405
+        on a known path with a wrong method, 413 if a body exceeds a
+        ``Content-Length`` limit (Slice 10 wires that explicitly).
+        The default body is ``{"detail": "..."}`` which is the same
+        non-RFC-9457 shape ``RequestValidationError`` produces;
+        normalise here so SDK consumers only ever decode one error
+        envelope.
+
+        Status → code mapping is intentionally narrow — covers the
+        codes a handler in this codebase can actually raise. Anything
+        else falls back to a synthesised ``http_<status>`` code so
+        the contract stays uniform even for unexpected statuses.
+        """
+        # Curated mapping for the statuses we expect from routing
+        # and middleware. Each maps the Starlette status to (code,
+        # title) — the wire ``code`` is what consumers branch on.
+        mapping: dict[int, tuple[str, str]] = {
+            404: ("not_found", "Not Found"),
+            405: ("method_not_allowed", "Method Not Allowed"),
+            413: ("payload_too_large", "Payload Too Large"),
+            415: ("unsupported_media_type", "Unsupported Media Type"),
+        }
+        code, title = mapping.get(
+            exc.status_code,
+            (f"http_{exc.status_code}", f"HTTP {exc.status_code}"),
+        )
+        # 404 is the most common path here (Starlette's default for
+        # an unknown URL). Use the typed ``NotFoundError`` so the
+        # ``code`` is the same constant the service layer raises —
+        # consumers branch on one value, not two.
+        typed: ServiceError
+        if exc.status_code == 404:
+            typed = NotFoundError(str(exc.detail or "not found"))
+        else:
+            typed = ServiceError(str(exc.detail or "request failed"))
+            typed.http_status = exc.status_code
+            typed.code = code
+            typed.title = title
+        level = (
+            logging.ERROR
+            if typed.http_status >= 500
+            else logging.WARNING
+        )
+        _logger.log(
+            level,
+            "service_error",
+            extra={
+                "code": typed.code,
+                "http_status": typed.http_status,
+            },
+        )
+        return error_response(
+            typed,
+            request_id=request_id_of(request),
+            instance=request.url.path,
+        )
+
     @app.exception_handler(Exception)
     async def on_unhandled_exception(  # pyright: ignore[reportUnusedFunction]  # registered via decorator
         request: Request, exc: Exception
@@ -168,10 +280,11 @@ def create_app(*, mount_frontend: bool = True) -> FastAPI:
         #   any ``ServiceError`` subclass routes through
         #   ``on_service_error`` above before this one ever sees it.
         # * Starlette's ``HTTPException`` and FastAPI's
-        #   ``RequestValidationError`` retain their own default
-        #   handlers — acceptable under the narrow reading of D16 (the
-        #   *service-layer* error envelope is RFC 9457) and already
-        #   documented in ``backend/api/jumps.py`` for path-param 422s.
+        #   ``RequestValidationError`` are also caught above (Slice 5)
+        #   and translated to RFC 9457 problem+json. Every 4xx and 5xx
+        #   on the wire is now problem+json with the
+        #   ``code`` / ``request_id`` / ``errors[]`` extensions — no
+        #   bifurcated envelope to dispatch on.
         # * An ``@app.exception_handler(Exception)`` registration is
         #   routed into Starlette's ``ServerErrorMiddleware`` (see
         #   ``starlette.applications.Starlette._build_middleware_stack``),
