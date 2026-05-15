@@ -32,7 +32,7 @@ from .config import load_settings
 from .observability.logging import configure_logging
 from .services.reindex_service import reindex_from_xml
 from .storage.bootstrap import bootstrap_logbook
-from .storage.index import INDEX_SCHEMA_VERSION, open_index
+from .storage.index import INDEX_SCHEMA_VERSION, IndexSchemaTooNewError, open_index
 from .storage.lockfile import LockError, acquire
 
 _logger = logging.getLogger("backend.main")
@@ -73,6 +73,14 @@ def main() -> int:
         # and opening at startup is a health check + version probe.
         try:
             result = open_index(settings.logbook_root)
+        except IndexSchemaTooNewError as exc:
+            # On-disk schema is newer than this build's. Silently
+            # downgrading would drop columns this build doesn't know
+            # how to repopulate from XML — better to refuse with a
+            # clear message so the user upgrades the app (or
+            # consciously deletes the index file).
+            print(f"error: {exc}", file=sys.stderr)
+            return 1
         except OSError as exc:
             print(
                 f"error: cannot open index at {settings.logbook_root}: {exc}",

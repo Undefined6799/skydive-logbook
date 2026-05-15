@@ -342,8 +342,23 @@ def open_index(logbook_root: Path) -> IndexOpenResult:
             previous_version=previous_version,
         )
 
-    # Branch 3: version mismatch in either direction. Drop every user
-    # table (indexes and triggers cascade), reinstall, restamp. The
+    # Branch 3a: on-disk schema is NEWER than this build knows about.
+    # Refuse to start rather than silently drop the tables (and the
+    # columns this build can't repopulate from XML because they
+    # encode schema features the build doesn't understand). The user
+    # is running an older binary against a newer logbook — they need
+    # to either upgrade the app or rebuild the index from scratch
+    # against this build's schema by deleting index.sqlite.
+    if previous_version > INDEX_SCHEMA_VERSION:
+        conn.close()
+        raise IndexSchemaTooNewError(
+            f"logbook index is schema v{previous_version}; this app "
+            f"installs v{INDEX_SCHEMA_VERSION}. Upgrade the app, or "
+            f"delete {path} to rebuild with the older schema."
+        )
+
+    # Branch 3b: on-disk schema is OLDER. Drop every user table
+    # (indexes and triggers cascade), reinstall, restamp. The
     # caller is now responsible for reindexing from XML.
     _drop_user_tables(conn)
     conn.executescript(_SCHEMA)
@@ -353,6 +368,17 @@ def open_index(logbook_root: Path) -> IndexOpenResult:
         schema_was_rebuilt=True,
         previous_version=previous_version,
     )
+
+
+class IndexSchemaTooNewError(RuntimeError):
+    """The on-disk SQLite index uses a schema version newer than this build.
+
+    Raised by :func:`open_index` when ``PRAGMA user_version`` is
+    greater than :data:`INDEX_SCHEMA_VERSION`. The caller (``main.py``)
+    should catch this and surface a human-readable message to the
+    user — either upgrade the app or delete the index file to rebuild
+    with the older schema.
+    """
 
 
 def _set_user_version(conn: sqlite3.Connection, version: int) -> None:
