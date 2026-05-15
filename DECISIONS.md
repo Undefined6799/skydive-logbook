@@ -7581,9 +7581,19 @@ The contract:
 - **Replay shape:** on a key hit AND matching hash, the
   middleware short-circuits the application entirely and replays
   the stored response verbatim — same HTTP status, same
-  content-type, same body bytes. The response carries the same
-  ``X-Request-Id`` the original ran with, so log correlation
-  works end-to-end.
+  content-type, same body bytes — plus an ``idempotent-replayed:
+  true`` response header so observers can distinguish a replay
+  from a fresh response. The replay does NOT preserve the
+  original request's ``X-Request-Id``; ``CorrelationIdMiddleware``
+  sits outside the idempotency middleware and stamps the *current*
+  retry's request id on every response, replay or not. Log
+  correlation across a retry pair works via the
+  ``Idempotency-Key`` field (logged on every ``idempotency_*``
+  event), not via request_id. An empty
+  ``Idempotency-Key`` header value is treated as "no key" and
+  the request flows through unchanged — clients that strip the
+  header by setting it empty get the pre-middleware behaviour
+  by accident, which is the safe default.
 - **Reuse rejection:** on a key hit AND different hash, the
   middleware returns 422 ``application/problem+json`` with
   ``code=idempotency_key_reuse``. This is a "your client is
@@ -7686,8 +7696,11 @@ The contract:
 - D26 — schema versioning + drop-and-reindex; this entry's
   table participates in that flow (gets dropped, re-installed
   empty).
-- D27 — request_id correlation; the replayed response keeps
-  its original ``X-Request-Id`` so logs still correlate.
+- D27 — request_id correlation. Note: a replayed response gets
+  the *retry's* request_id (CorrelationIdMiddleware sits outside
+  this one); cross-attempt log correlation uses the
+  ``idempotency_key`` field on the ``idempotency_*`` events
+  instead.
 - D48 — LAN exposure posture; this middleware is part of the
   Wave B hardening that closes "retry duplicates a jump" as a
   user-visible footgun before the LAN bind becomes practical.
