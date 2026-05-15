@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useState } from 'react';
 import {
   X, Trash2, AlertTriangle, Loader2, Pencil, Save, Package,
   ArrowRightLeft, Check, Scissors,
@@ -130,9 +130,11 @@ export default function ComponentDetailModal({
 
   if (!componentId || !componentType) return null;
 
-  function update(key, value) {
+  // Stable identity so memoized child sections (e.g. LinesetSection)
+  // can skip re-renders when an unrelated form field changes.
+  const update = useCallback((key, value) => {
     setForm((f) => ({ ...f, [key]: value }));
-  }
+  }, []);
 
   async function handleSave() {
     if (!record || !form) return;
@@ -775,129 +777,16 @@ function EditBody({ type, form, onChange, disabled }) {
       )}
 
       {type === 'main' && (
-        <Card>
-          <SectionLabel>CURRENT LINESET</SectionLabel>
-          <div className="text-[11px] text-neutral-500 mb-2.5 leading-relaxed">
-            Clear MATERIAL to record this main as "not yet lined".
-            In-place edits preserve the lineset id so historical
-            jumps that reference it (D36) keep their wear math
-            intact. The reline workflow (R.5) is the right path
-            once jumps exist on this lineset.
-          </div>
-          <FormGrid>
-            <Field label="MATERIAL">
-              <select
-                value={form.lineset_material}
-                onChange={(e) => {
-                  const m = e.target.value;
-                  onChange('lineset_material', m);
-                  onChange('lineset_variant', '');
-                }}
-                disabled={disabled}
-                className={inputCls}
-              >
-                <option value="">— not yet lined —</option>
-                {Object.entries(LINE_MATERIALS).map(([k, v]) => (
-                  <option key={k} value={k}>{v.label}</option>
-                ))}
-              </select>
-            </Field>
-            <Field label={form.lineset_material === 'other' ? 'TYPE (free text)' : 'VARIANT'}>
-              {form.lineset_material === 'other' ? (
-                <input
-                  value={form.lineset_variant}
-                  onChange={(e) => onChange('lineset_variant', e.target.value)}
-                  disabled={disabled}
-                  placeholder="custom line description"
-                  className={inputCls}
-                />
-              ) : (
-                <select
-                  value={form.lineset_variant}
-                  onChange={(e) => {
-                    const v = e.target.value;
-                    onChange('lineset_variant', v);
-                    const variants = LINE_MATERIALS[form.lineset_material]?.variants || [];
-                    const found = variants.find((x) => x.value === v);
-                    if (found) onChange('lineset_breaking_strength_lb', String(found.strength));
-                  }}
-                  disabled={disabled || !form.lineset_material}
-                  className={inputCls}
-                >
-                  <option value="">— pick a variant —</option>
-                  {(LINE_MATERIALS[form.lineset_material]?.variants || []).map((x) => (
-                    <option key={x.value} value={x.value}>
-                      {form.lineset_material === 'vectran' ? x.value : `${LINE_MATERIALS[form.lineset_material].label} ${x.value}`}
-                      {' '}
-                      ({x.strength} lb)
-                    </option>
-                  ))}
-                </select>
-              )}
-            </Field>
-          </FormGrid>
-          <FormGrid>
-            <Field label="BREAKING STRENGTH (lb)">
-              <input
-                type="number"
-                step="1"
-                min="0"
-                value={form.lineset_breaking_strength_lb}
-                onChange={(e) => onChange('lineset_breaking_strength_lb', e.target.value)}
-                disabled={disabled || !form.lineset_material}
-                placeholder="auto-fills from variant"
-                className={inputCls}
-              />
-            </Field>
-            <Field label="LINE TYPE (composed)">
-              <input
-                readOnly
-                value={composeLineType(form.lineset_material, form.lineset_variant) || '—'}
-                className={inputCls}
-                style={{ opacity: 0.7, cursor: 'default' }}
-              />
-            </Field>
-          </FormGrid>
-          <FormGrid>
-            <Field label="INSTALL DATE">
-              <input
-                type="date"
-                value={form.lineset_install_date}
-                onChange={(e) => onChange('lineset_install_date', e.target.value)}
-                disabled={disabled || !form.lineset_material}
-                className={inputCls}
-              />
-            </Field>
-            <Field label="INSTALLED BY (optional)">
-              <input
-                value={form.lineset_installed_by}
-                onChange={(e) => onChange('lineset_installed_by', e.target.value)}
-                disabled={disabled || !form.lineset_material}
-                placeholder="rigger name"
-                className={inputCls}
-              />
-            </Field>
-          </FormGrid>
-          <FormGrid>
-            <Field label="JUMPS ON LINESET (used gear)">
-              <input
-                type="number"
-                step="1"
-                min="0"
-                value={form.lineset_jumps_on_lineset_initial}
-                onChange={(e) => onChange('lineset_jumps_on_lineset_initial', e.target.value)}
-                disabled={disabled || !form.lineset_material}
-                placeholder="0 for fresh install"
-                className={inputCls}
-              />
-            </Field>
-            <div />
-          </FormGrid>
-          <div className="text-[11px] text-neutral-500 mt-2 leading-relaxed">
-            Exit weight is read live from your jumper profile (D46),
-            not snapshotted on the lineset.
-          </div>
-        </Card>
+        <LinesetSection
+          material={form.lineset_material}
+          variant={form.lineset_variant}
+          breaking_strength_lb={form.lineset_breaking_strength_lb}
+          install_date={form.lineset_install_date}
+          installed_by={form.lineset_installed_by}
+          jumps_on_lineset_initial={form.lineset_jumps_on_lineset_initial}
+          onChange={onChange}
+          disabled={disabled}
+        />
       )}
 
       {type === 'aad' && (
@@ -1341,6 +1230,143 @@ function SwapPicker({ options, loading, swapping, onCancel, onPick }) {
 // --------------------------------------------------------------------- //
 // Presentational primitives (mirror JumpDetailModal / AddComponentModal)
 // --------------------------------------------------------------------- //
+
+// CURRENT LINESET sub-card for the main canopy edit form. Extracted
+// from EditBody and wrapped in React.memo so typing in unrelated form
+// fields (IDENTIFICATION, GEOMETRY) doesn't re-render this section —
+// which mattered when the lineset dropdowns + auto-fill effects were
+// observed to lag during edits. Receives only the six lineset fields
+// it needs, plus a useCallback-stabilized onChange.
+const LinesetSection = React.memo(function LinesetSection({
+  material, variant, breaking_strength_lb, install_date, installed_by,
+  jumps_on_lineset_initial, onChange, disabled,
+}) {
+  return (
+    <Card>
+      <SectionLabel>CURRENT LINESET</SectionLabel>
+      <div className="text-[11px] text-neutral-500 mb-2.5 leading-relaxed">
+        Clear MATERIAL to record this main as "not yet lined".
+        In-place edits preserve the lineset id so historical
+        jumps that reference it (D36) keep their wear math
+        intact. The reline workflow (R.5) is the right path
+        once jumps exist on this lineset.
+      </div>
+      <FormGrid>
+        <Field label="MATERIAL">
+          <select
+            value={material}
+            onChange={(e) => {
+              const m = e.target.value;
+              onChange('lineset_material', m);
+              onChange('lineset_variant', '');
+            }}
+            disabled={disabled}
+            className={inputCls}
+          >
+            <option value="">— not yet lined —</option>
+            {Object.entries(LINE_MATERIALS).map(([k, v]) => (
+              <option key={k} value={k}>{v.label}</option>
+            ))}
+          </select>
+        </Field>
+        <Field label={material === 'other' ? 'TYPE (free text)' : 'VARIANT'}>
+          {material === 'other' ? (
+            <input
+              value={variant}
+              onChange={(e) => onChange('lineset_variant', e.target.value)}
+              disabled={disabled}
+              placeholder="custom line description"
+              className={inputCls}
+            />
+          ) : (
+            <select
+              value={variant}
+              onChange={(e) => {
+                const v = e.target.value;
+                onChange('lineset_variant', v);
+                const variants = LINE_MATERIALS[material]?.variants || [];
+                const found = variants.find((x) => x.value === v);
+                if (found) onChange('lineset_breaking_strength_lb', String(found.strength));
+              }}
+              disabled={disabled || !material}
+              className={inputCls}
+            >
+              <option value="">— pick a variant —</option>
+              {(LINE_MATERIALS[material]?.variants || []).map((x) => (
+                <option key={x.value} value={x.value}>
+                  {material === 'vectran' ? x.value : `${LINE_MATERIALS[material].label} ${x.value}`}
+                  {' '}
+                  ({x.strength} lb)
+                </option>
+              ))}
+            </select>
+          )}
+        </Field>
+      </FormGrid>
+      <FormGrid>
+        <Field label="BREAKING STRENGTH (lb)">
+          <input
+            type="number"
+            step="1"
+            min="0"
+            value={breaking_strength_lb}
+            onChange={(e) => onChange('lineset_breaking_strength_lb', e.target.value)}
+            disabled={disabled || !material}
+            placeholder="auto-fills from variant"
+            className={inputCls}
+          />
+        </Field>
+        <Field label="LINE TYPE (composed)">
+          <input
+            readOnly
+            value={composeLineType(material, variant) || '—'}
+            className={inputCls}
+            style={{ opacity: 0.7, cursor: 'default' }}
+          />
+        </Field>
+      </FormGrid>
+      <FormGrid>
+        <Field label="INSTALL DATE">
+          <input
+            type="date"
+            value={install_date}
+            onChange={(e) => onChange('lineset_install_date', e.target.value)}
+            disabled={disabled || !material}
+            className={inputCls}
+          />
+        </Field>
+        <Field label="INSTALLED BY (optional)">
+          <input
+            value={installed_by}
+            onChange={(e) => onChange('lineset_installed_by', e.target.value)}
+            disabled={disabled || !material}
+            placeholder="rigger name"
+            className={inputCls}
+          />
+        </Field>
+      </FormGrid>
+      <FormGrid>
+        <Field label="JUMPS ON LINESET (used gear)">
+          <input
+            type="number"
+            step="1"
+            min="0"
+            value={jumps_on_lineset_initial}
+            onChange={(e) => onChange('lineset_jumps_on_lineset_initial', e.target.value)}
+            disabled={disabled || !material}
+            placeholder="0 for fresh install"
+            className={inputCls}
+          />
+        </Field>
+        <div />
+      </FormGrid>
+      <div className="text-[11px] text-neutral-500 mt-2 leading-relaxed">
+        Exit weight is read live from your jumper profile (D46),
+        not snapshotted on the lineset.
+      </div>
+    </Card>
+  );
+});
 
 function Card({ children }) {
   return (
