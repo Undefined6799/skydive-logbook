@@ -670,11 +670,16 @@ def main() -> int:
         resizable=True,
         js_api=api,
     )
-    # debug=True enables the WebView devtools (right-click → Inspect on
-    # macOS WKWebView) so you can see network calls, console errors, and
-    # React rendering while the prototype is in flight. Set to False for
-    # a packaged release once the app stabilizes.
-    webview.start(_on_window_ready, debug=True)
+    # ``debug=True`` enables the WebView devtools (right-click → Inspect
+    # on macOS WKWebView) — useful in dev for inspecting network calls,
+    # console errors, and React rendering. In a packaged build (.app /
+    # .exe / AppImage) the devtools are off-putting on every launch and
+    # the file-sink log is the right debugging surface for users; the
+    # ``_is_frozen`` gate flips them off there. To force devtools on in
+    # a packaged build for a one-off debug session, set the env var
+    # ``SKYDIVE_DEVTOOLS=1`` before launching.
+    debug = (not _is_frozen()) or os.environ.get("SKYDIVE_DEVTOOLS") == "1"
+    webview.start(_on_window_ready, debug=debug)
     return 0
 
 

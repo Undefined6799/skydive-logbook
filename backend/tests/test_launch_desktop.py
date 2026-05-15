@@ -329,11 +329,14 @@ class TestMainShortCircuit:
         )
 
         # Also stub configure_logging — it has the side effect of
-        # installing a JSON formatter on the root logger that other
-        # tests don't expect.
+        # installing a JSON formatter on the root logger and a rotating
+        # file handler under user_config_dir(), neither of which other
+        # tests expect. ``**_`` absorbs whichever kwargs the launcher
+        # passes (``level``, ``file_sink``) without the test tracking
+        # signature drift.
         monkeypatch.setattr(
             "backend.observability.logging.configure_logging",
-            lambda _level: None,
+            lambda **_: None,
         )
 
         # Sentinel: if main reaches webview.start, blow up loudly.
