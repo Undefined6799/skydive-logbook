@@ -7396,3 +7396,140 @@ intentional acts; neither loses data invisibly.
 - `backend/storage/index.py:IndexSchemaTooNewError`.
 - `backend/tests/test_index_schema_versioning.py` — refusal
   + older-on-disk pinning tests.
+
+---
+
+## D70 — Rig partial-create recovery: forward-complete the assignment
+
+**Date:** 2026-05-15.
+
+**Decision.** When ``backend/services/rig_service.py:create_rig``
+crashes between writing ``rig.xml`` and finishing the four
+component-assignment loop iterations (D37 §"assignment step"),
+the on-disk state is a rig folder referencing four components but
+only the iteration-completed components pointing back at the rig.
+The recovery path is **forward-complete**: a new boot-time
+reconcile, ``folder_reconcile_rigs(logbook_root)``, walks every
+``rigs/<nickname>/rig.xml``, parses it, and for each component
+referenced by ``current_*_id`` whose own ``assigned_rig_id`` is
+``None`` or pointing somewhere else, sets it to the rig's id.
+
+The complementary direction — a component whose
+``assigned_rig_id`` points at a rig that either no longer exists
+on disk or no longer references the component — is cleared (set
+to ``None``). This handles the orphan side, including the case
+where a partial-create rig got hand-deleted by the user but a
+component still claims to be on it.
+
+The reconcile is wired into ``backend/main.py`` after
+``bootstrap_logbook()`` and ``open_index()``, before
+``uvicorn.run``. It runs under the existing D9 lockfile and the
+D50 ``WRITER_LOCK``; it is idempotent and cheap (one parse per
+rig folder plus the inventory walk; one ``atomic_write`` per
+component that needs repair).
+
+**Why forward-complete, not revert.** Two defensible policies
+exist:
+
+1. *Forward-complete.* The rig.xml was successfully written,
+   which means the four refs already passed D37's pre-write
+   validation (``status == active`` and ``assigned_rig_id`` was
+   ``None`` or pointing at the rig being created). Treating the
+   on-disk rig as the authoritative statement of intent and
+   bringing the components into agreement matches the user's
+   stated goal (they were halfway through creating this rig).
+2. *Revert the rig.* Delete the half-formed rig folder; clear
+   any component that ended up pointing at it. The user's
+   stated intent is lost but the inventory returns to a clean
+   pre-create state.
+
+Forward-complete wins because (a) the rig folder is named after
+the user's nickname — losing it loses the user's choice, while
+the component bindings are derivable; (b) on the retry path, a
+forward-completed rig is the **only** state that lets a future
+``GET /api/v1/rigs/<id>`` work; reverting silently strands the
+user with no way to find what happened to their half-create; (c)
+the D37 pre-write validation has already ruled out the unsafe
+cases (component on a different active rig, component retired
+since the form was filled out), so forward-completing cannot
+overwrite a legitimate assignment.
+
+**Why not heal on read.** ``folder_reconcile`` (D25) heals the
+SHA256SUMS manifest on every ``get_jump`` call. The analogous
+"every ``get_rig`` heals the bidirectional refs" pattern is
+rejected because:
+
+1. The cost is asymmetric: a SHA256SUMS heal is one structural
+   string comparison and at most one atomic_write of a few
+   hundred bytes. A rig-component reconcile reads four
+   component XMLs per rig and may rewrite any of them. On a
+   logbook with twenty rigs that's eighty parses on every
+   ``list_rigs`` call.
+2. The legitimate-state case (``get_rig`` on a healthy rig)
+   would still pay the parse cost for every component, even
+   though 99.99% of calls have nothing to heal.
+3. A boot-time reconcile catches the crash class — partial
+   ``create_rig`` — at exactly the moment the next user
+   request would otherwise observe inconsistency, with no
+   per-request cost.
+
+**Consequences.**
+
+- A user who deliberately hand-edits ``inventory/mains/<id>.xml``
+  to swap rigs will see the next boot's reconcile assert the
+  rig.xml's claim. The user's edit is reverted. This is the same
+  posture as D25 reconcile-on-read: the rig XML is the
+  authoritative statement, and the inventory components are
+  consequential. Hand-editing is not a supported v0.1 workflow
+  per D2's "the XML is text, but the app owns the writes" rule.
+- The reconcile may take measurable time on a logbook with many
+  rigs (~10ms per rig, single-digit milliseconds per component).
+  At v0.1's expected scale (single jumper, single-digit rig
+  count) the boot cost is negligible. The reconcile is run
+  synchronously before uvicorn starts so the first request
+  never observes a transient inconsistency.
+- A future ``verify`` pass should report a rig with
+  bidirectional-mismatched components as ``rig_components_drift``
+  (read-only diagnostic). Slice 9 (Wave B) adds the
+  detect-then-fix-then-reverify loop.
+- The reconcile is intentionally tolerant of inventory
+  components whose XML fails to parse or validate: it logs and
+  skips them (same posture as ``_read_all_rigs``). A broken
+  inventory file is the user's problem and out of reconcile's
+  remit.
+
+**Alternatives considered.**
+
+- *(Revert the rig.)* See above.
+- *(Heal on read in ``get_rig``.)* See above.
+- *(Refuse to start until the user resolves the partial state.)*
+  Strictest but worst UX — the user's logbook is locked out
+  by a problem the app caused. Rejected because boot-time
+  reconcile already produces a deterministic recovery without
+  user intervention.
+- *(Heal in ``create_rig``'s retry path only — detect the
+  collision, repair, then proceed.)* The handoff doc's
+  observation that the retry path is "doubly broken"
+  (``mkdir(exist_ok=False)`` fails AND
+  ``_validate_component_for_assignment`` rejects the
+  half-bound components) makes this attractive, but it ties
+  the recovery to a user action ("retry the create"). The
+  boot-time variant heals even when the user closes the app
+  in disgust and reopens it next week.
+
+**References.**
+
+- D9 — lockfile that gates the boot sequence.
+- D25 — ``folder_reconcile`` for jumps; sibling pattern this
+  decision generalises across entity types.
+- D37 — bidirectional rig ↔ component reference contract;
+  the invariant this reconcile re-asserts.
+- D50 — ``WRITER_LOCK``; the reconcile decorates with
+  ``@with_writer_lock`` so its writes serialise with any
+  concurrent service write.
+- ``backend/services/rig_reconcile_service.py:folder_reconcile_rigs``
+  — the implementation.
+- ``backend/tests/test_rig_partial_create_recovery.py`` — pinning
+  tests.
+- ``reviews/2026-05-15-chatgpt-findings-deep-dive.md`` §8.1 —
+  the failure trace that motivated this entry.

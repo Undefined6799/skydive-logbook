@@ -15,7 +15,11 @@ Startup order (all under the D9 lock, all before ``uvicorn.run``):
      disk per D26. Failure here refuses startup (return 1) so the API
      never accepts a request against an empty index after a schema
      bump.
-  4. ``uvicorn.run`` — serve the REST API.
+  4. ``folder_reconcile_rigs`` — heal D37 bidirectional rig ↔
+     component refs left inconsistent by a partial ``create_rig``
+     crash (D70). Idempotent and cheap; non-fatal on failure
+     (warning to stderr, continue startup).
+  5. ``uvicorn.run`` — serve the REST API.
 
 Why in that order: bootstrap installs the filesystem skeleton the index
 and future writes depend on; open_index verifies the DB is at the
@@ -31,6 +35,7 @@ import sys
 from .config import load_settings
 from .observability.logging import configure_logging
 from .services.reindex_service import reindex_from_xml
+from .services.rig_reconcile_service import folder_reconcile_rigs
 from .storage.bootstrap import bootstrap_logbook
 from .storage.index import INDEX_SCHEMA_VERSION, IndexSchemaTooNewError, open_index
 from .storage.lockfile import LockError, acquire
@@ -172,6 +177,28 @@ def main() -> int:
                         report.jumper_credentials_indexed
                     ),
                 },
+            )
+
+        # Per D70: heal rig ↔ component bidirectional refs left
+        # inconsistent by a partial ``create_rig`` (rig.xml written
+        # but the component-assignment loop crashed mid-way). The
+        # reconcile is idempotent and cheap on a healthy logbook —
+        # one parse per rig folder plus one walk of inventory. It
+        # runs after the index is open and (if applicable) reindexed
+        # so its own ``set_assigned_rig_id`` writes can update the
+        # inventory's wear-count projections via the same code path
+        # the regular service writes use.
+        try:
+            folder_reconcile_rigs(settings.logbook_root)
+        except Exception as exc:
+            # A reconcile failure should not block startup — the
+            # logbook is still readable, just with the same
+            # inconsistency it had before the boot. Print and
+            # continue; the operator can run ``verify`` to see what
+            # tripped the reconcile.
+            print(
+                f"warning: rig reconcile failed: {exc}",
+                file=sys.stderr,
             )
 
         import uvicorn
