@@ -2,7 +2,7 @@ import React, { useEffect, useState } from 'react';
 import { Sparkles, ArrowRight, X } from 'lucide-react';
 import { getOnboardingState } from '../../api';
 
-// D64 resumption banner. Renders on the Profile tab when the
+// D65 resumption banner. Renders on the Profile tab when the
 // onboarding sentinel is present (wizard was dismissed) but at
 // least one of has_jumper / has_dropzones / has_rigs is still
 // false. Clicking "Resume setup" fires a custom window event the
@@ -16,7 +16,7 @@ import { getOnboardingState } from '../../api';
 //
 // Dismissable per session via local state (no persistence) so a
 // user who explicitly hides it now still gets re-nudged on next
-// launch — matches the D64 "sentinel is final; banner is a nudge"
+// launch — matches the D65 "sentinel is final; banner is a nudge"
 // split.
 export const ONBOARDING_RESUME_EVENT = 'logbook:open-onboarding';
 

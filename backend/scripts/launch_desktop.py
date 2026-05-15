@@ -60,7 +60,7 @@ _BACKEND_HEALTH_URL = f"http://{_BACKEND_HOST}:{_BACKEND_PORT}/api/v1/health"
 _APP_URL = f"http://localhost:{_BACKEND_PORT}/"
 
 
-# Per D64 the launcher's job narrows to "pick a folder, run bootstrap,
+# Per D65 the launcher's job narrows to "pick a folder, run bootstrap,
 # hand off to the SPA". The personal greeting that used to live here
 # ("Good morning, Alex") leaked from a dev session and is wrong for
 # every other installer; the SPA now owns the first-run welcome

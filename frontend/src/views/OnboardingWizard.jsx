@@ -11,7 +11,7 @@ import RigStep from './onboarding/RigStep';
 import FinishStep from './onboarding/FinishStep';
 import AlreadyDoneStep from './onboarding/AlreadyDoneStep';
 
-// D64 first-run wizard. Orchestrates 8 numbered steps + a terminal
+// D65 first-run wizard. Orchestrates 8 numbered steps + a terminal
 // finish screen:
 //
 //   folder → jumper → dropzone → container → main → reserve → aad → rig → finish

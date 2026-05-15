@@ -29,7 +29,7 @@ export default function App() {
   const [activeTab, setActiveTab] = useState('dashboard');
   const View = VIEWS[activeTab] || Dashboard;
 
-  // D64: read the onboarding sentinel + the three "has_*" flags on
+  // D65: read the onboarding sentinel + the three "has_*" flags on
   // mount. Auto-show the wizard when the sentinel is absent and at
   // least one piece of foundation data is still missing. The
   // Profile resumption banner fires `ONBOARDING_RESUME_EVENT` to
