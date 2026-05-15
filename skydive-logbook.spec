@@ -24,7 +24,7 @@
 # Verification surface: the agent that wrote this can validate
 # Python-syntax of the file and import-ability of the entry point;
 # producing the actual binary requires running PyInstaller on each
-# target OS. See BUILD.md at the project root for the per-platform
+# target OS. See docs/build.md for the per-platform
 # build command and the verification gaps.
 
 # ruff: noqa: F821, F405  # PyInstaller injects Analysis/PYZ/EXE/etc. at runtime
@@ -56,7 +56,7 @@ APP_BUNDLE_ID = "org.skydive_logbook.app"  # macOS bundle id
 #   - Linux:   .png (used by AppImage tooling; PyInstaller itself
 #              ignores the ``icon=`` arg on Linux)
 # We ship a single SVG placeholder in build/icons/ and document the
-# per-platform conversion in BUILD.md. If the platform-specific file
+# per-platform conversion in docs/build.md. If the platform-specific file
 # is missing, fall back to None — the build will produce a plain
 # default-icon binary rather than fail.
 _icon_dir = PROJECT_ROOT / "build" / "icons"
@@ -91,7 +91,7 @@ datas = [
     ),
     # The built React app — served by FastAPI from inside the bundle.
     # frontend/dist/ must exist before invoking pyinstaller; the
-    # build command in BUILD.md runs `npm run build` first.
+    # build command in docs/build.md runs `npm run build` first.
     (
         str(PROJECT_ROOT / "frontend" / "dist"),
         "frontend/dist",
@@ -160,7 +160,7 @@ exe = EXE(
     disable_windowed_traceback=False,
     argv_emulation=False,
     target_arch=None,  # let PyInstaller pick host arch
-    codesign_identity=None,  # see BUILD.md §Code Signing
+    codesign_identity=None,  # see docs/build.md §Code Signing
     entitlements_file=None,
     icon=ICON_PATH,
 )
@@ -197,7 +197,7 @@ if sys.platform == "darwin":
             # The launcher writes config.toml in the user's
             # Application Support and reads/writes the user-chosen
             # logbook folder. macOS sandboxing entitlements are
-            # documented in BUILD.md (we run unsandboxed for v0.1
+            # documented in docs/build.md (we run unsandboxed for v0.1
             # because the user explicitly chooses the logbook root).
             "NSHighResolutionCapable": True,
             # Mojave+ requires this string for any app that calls

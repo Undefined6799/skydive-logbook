@@ -30,8 +30,8 @@ When sources disagree, trust in this order:
    is shaped the way it is. Always read it before making a
    cross-cutting change. Rationale and consequences live there, not
    in tribal knowledge.
-3. **`ARCHITECTURE.md`** — narrative overview. Derived from D-entries
-   and code; useful for orienting, not for deciding.
+3. **`docs/architecture.md`** — narrative overview. Derived from
+   D-entries and code; useful for orienting, not for deciding.
 4. **Git history** — for recent context (who/when/why-this-commit).
 5. **`README.md`** — user-facing; never a decision source.
 

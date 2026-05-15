@@ -77,8 +77,8 @@ Walked the 1271-line, 10-view HTML mockup through the design-critique
 framework (WCAG 2.1, Nielsen heuristics, HIG/MD3). The key finding
 was that Equipment / Equipment Edit / Rigs List / Rig Edit views
 reflected the pre-D33 shape and were desynced from the freshly-landed
-rig manager. The mockup itself is preserved at
-`docs/mockups/ui-mockup.html` for design reference.
+rig manager. The mockup was deleted in the 2026-05-15 cleanup —
+the React frontend supersedes it.
 
 ---
 

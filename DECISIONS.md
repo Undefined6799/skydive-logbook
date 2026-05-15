@@ -11,7 +11,7 @@ are versioned by adding a new numbered decision that supersedes an
 older one; we don't edit old decisions in place.
 
 In-flight decisions that haven't been ratified yet live in
-[DECISIONS-DRAFT.md](DECISIONS-DRAFT.md) — they keep their D-number
+[docs/decisions-draft.md](docs/decisions-draft.md) — they keep their D-number
 when promoted here. D55 and D56 are currently drafts; D52 was
 promoted to this file on 2026-05-14.
 
@@ -3275,9 +3275,10 @@ not pretend it exists.
   small note like "Reserve/AAD/Container are editable today;
   later releases will gate edits behind a repack event" — so the
   user is not surprised when the lock arrives.
-- Mockup (`ui-mockup.html`): View 5c renders all four components
-  as editable. View 5 (per-kind equipment edit) renders all
-  fields editable for all kinds. No 🔒 chrome.
+- Pre-React mockup (since deleted; see `docs/historical-reviews.md`
+  for context): View 5c rendered all four components as editable;
+  View 5 (per-kind equipment edit) rendered all fields editable
+  for all kinds. No 🔒 chrome.
 
 **Alternatives considered.**
 
@@ -4746,7 +4747,7 @@ and `reindex` skips.
 
 **Consequences.**
 
-- `README.md`, `ARCHITECTURE.md` §Concurrency-and-sync, and the
+- `README.md`, `docs/architecture.md` §Concurrency-and-sync, and the
   forthcoming first-run UX (audit INFRA-6) name cloud sync as
   supported best-effort with this caveat. Until the first-run UX
   lands, the documentation in those two files is the surface where
@@ -5271,7 +5272,7 @@ is no in-app binary replacement and no automatic update path (D14).
 - Self-distribution via GitHub Releases lets us ship without paid
   certificates as long as the per-platform "open this anyway"
   instructions are documented prominently — leading the README, not
-  buried in BUILD.md.
+  buried in docs/build.md.
 - The Gatekeeper / SmartScreen UX is genuinely worse for non-technical
   users. We accept that explicitly as v0.1 cost-of-doing-business,
   document it loudly, and let the population of beta testers self-
@@ -5337,7 +5338,7 @@ is no in-app binary replacement and no automatic update path (D14).
 - D48 — loopback-only deployment posture (related: no auth surface).
 - 2026-04-30 finish-open-items report (condensed in
   `docs/historical-reviews.md`).
-- BUILD.md — per-platform build commands and signing command
+- docs/build.md — per-platform build commands and signing command
   reference (used when a re-evaluation trigger fires).
 
 ---
