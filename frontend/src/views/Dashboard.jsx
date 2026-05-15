@@ -14,6 +14,7 @@ import { getStats, listJumps, ApiError } from '../api';
 import { PrimaryButton, GhostButton, Card, SectionLabel } from '../primitives';
 import { formatFreefall } from './CareerStats';
 import LogJumpModal from '../modals/LogJumpModal';
+import ResumeBanner from './onboarding/ResumeBanner';
 
 // Dashboard — landing page replacing the legacy Profile tab.
 //
@@ -252,6 +253,13 @@ export default function Dashboard() {
       <div className="text-[12px] text-neutral-500 mb-6">
         Quick actions and the stats that matter to you.
       </div>
+
+      {/* D65: nudges the user to finish first-run setup when the
+          sentinel is present but some has_* flag is still false.
+          The banner renders null when the state's clean. Lives on
+          Dashboard (the landing page) so a user with skipped /
+          partial onboarding sees it immediately. */}
+      <ResumeBanner />
 
       <FunctionBar
         onLogJump={() => setShowLogModal(true)}

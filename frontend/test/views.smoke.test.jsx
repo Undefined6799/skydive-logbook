@@ -71,6 +71,7 @@ import Inventory from '../src/views/Inventory';
 import Dropzones from '../src/views/Dropzones';
 import Settings from '../src/views/Settings';
 import CareerStats from '../src/views/CareerStats';
+import OnboardingWizard from '../src/views/OnboardingWizard';
 
 const VIEWS = [
   ['Dashboard', Dashboard],
@@ -96,4 +97,27 @@ describe('view import + render smoke', () => {
       expect(container).toBeTruthy();
     });
   }
+
+  it('OnboardingWizard renders without throwing', () => {
+    expect(typeof OnboardingWizard).toBe('function');
+    // OnboardingWizard requires initialState + onDone props. The
+    // smoke test asserts first-render only — both props get
+    // shape-correct minimal values rather than the no-arg form
+    // used for the rest of the VIEWS table (which all take zero
+    // required props).
+    const { container } = render(
+      <OnboardingWizard
+        initialState={{
+          completed: false,
+          completed_at: null,
+          status: null,
+          has_jumper: false,
+          has_dropzones: false,
+          has_rigs: false,
+        }}
+        onDone={() => {}}
+      />,
+    );
+    expect(container).toBeTruthy();
+  });
 });

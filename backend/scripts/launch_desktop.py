@@ -60,6 +60,12 @@ _BACKEND_HEALTH_URL = f"http://{_BACKEND_HOST}:{_BACKEND_PORT}/api/v1/health"
 _APP_URL = f"http://localhost:{_BACKEND_PORT}/"
 
 
+# Per D64 the launcher's job narrows to "pick a folder, run bootstrap,
+# hand off to the SPA". The personal greeting that used to live here
+# ("Good morning, Alex") leaked from a dev session and is wrong for
+# every other installer; the SPA now owns the first-run welcome
+# experience via the onboarding wizard, which can be themed alongside
+# the rest of the app and reuse its component library.
 _WELCOME_HTML = """\
 <!doctype html>
 <html lang=en>
@@ -87,8 +93,8 @@ _WELCOME_HTML = """\
 <body>
   <div class=wrap>
     <div class=label>Skydive Logbook</div>
-    <div class=title>Good morning, Alex</div>
-    <div class=status><span class=dot></span> &nbsp; <span id=msg>Starting up\u2026</span></div>
+    <div class=title>Starting up</div>
+    <div class=status><span class=dot></span> &nbsp; <span id=msg>Loading\u2026</span></div>
   </div>
 </body>
 </html>
