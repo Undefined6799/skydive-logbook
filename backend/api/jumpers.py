@@ -48,6 +48,8 @@ from uuid import UUID
 
 from fastapi import APIRouter, Depends, File, Query, Response, UploadFile, status
 
+from ..api.errors import PayloadTooLargeError
+from ..config import Settings
 from ..models.jumper import (
     CopCreate,
     FederationRatingCreate,
@@ -60,7 +62,7 @@ from ..models.jumper import (
 )
 from ..services import jumper_credential_service, jumper_service
 from ..services.jumper_service import Upload
-from .deps import get_logbook_root, get_user_id
+from .deps import get_logbook_root, get_settings, get_user_id
 from .openapi import ERR_CREATE, ERR_DELETE, ERR_LIST, ERR_READ, ERR_UPDATE
 
 router = APIRouter(prefix="/api/v1/jumpers", tags=["jumpers"])
@@ -71,7 +73,9 @@ router = APIRouter(prefix="/api/v1/jumpers", tags=["jumpers"])
 _UPLOAD_CHUNK_SIZE = 64 * 1024
 
 
-def _upload_chunks(upload: UploadFile) -> Iterator[bytes]:
+def _upload_chunks(
+    upload: UploadFile, *, max_bytes: int
+) -> Iterator[bytes]:
     """Yield ``upload.file`` in fixed-size chunks (D21 streaming).
 
     UploadFile wraps a SpooledTemporaryFile so reads are already
@@ -79,12 +83,30 @@ def _upload_chunks(upload: UploadFile) -> Iterator[bytes]:
     ``atomic_write_stream``'s loop. Reads happen from the
     synchronous ``.file`` attribute so this generator composes with
     sync route handlers (D7).
+
+    ``max_bytes`` enforces the per-file cap from
+    ``Settings.max_file_bytes`` (Slice 10). Same shape as the
+    sibling ``_upload_chunks`` in ``backend/api/jumps.py`` — on
+    overrun the generator raises :class:`PayloadTooLargeError`
+    and ``atomic_write_stream``'s context-manager rollback cleans
+    up the partial tmp file.
     """
     f = upload.file
+    consumed = 0
     while True:
         chunk = f.read(_UPLOAD_CHUNK_SIZE)
         if not chunk:
             return
+        consumed += len(chunk)
+        if consumed > max_bytes:
+            raise PayloadTooLargeError(
+                f"upload {upload.filename!r} exceeds the per-file "
+                f"cap ({consumed} > {max_bytes} bytes). Split the "
+                "file or raise Settings.max_file_bytes.",
+                filename=upload.filename or "",
+                consumed_bytes=consumed,
+                max_bytes=max_bytes,
+            )
         yield chunk
 
 
@@ -261,11 +283,12 @@ def add_attachment_route(
     ),
     logbook_root: Path = Depends(get_logbook_root),
     user_id: str = Depends(get_user_id),
+    settings: Settings = Depends(get_settings),
 ) -> Jumper:
     upload = Upload(
         filename=file.filename or "",
         content_type=file.content_type,
-        chunks=_upload_chunks(file),
+        chunks=_upload_chunks(file, max_bytes=settings.max_file_bytes),
     )
     return jumper_service.add_attachment_to_jumper(
         logbook_root, user_id, jumper_id, upload

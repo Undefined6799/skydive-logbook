@@ -149,6 +149,7 @@ def custom_openapi(app: FastAPI) -> dict[str, Any]:
     for code_ref, http_status, title in [
         ("NotFound",         404, "Not Found"),
         ("Conflict",         409, "Conflict"),
+        ("PayloadTooLarge",  413, "Payload Too Large"),
         ("ValidationFailed", 422, "Validation Failed"),
         ("Internal",         500, "Internal Server Error"),
     ]:
@@ -227,6 +228,11 @@ ERR_LIST: dict[str | int, dict[str, Any]] = {
 }
 ERR_CREATE: dict[str | int, dict[str, Any]] = {
     "409": _ref("Conflict"),
+    # 413 covers ``Settings.max_request_bytes`` /
+    # ``Settings.max_file_bytes`` rejections (Slice 10). Surfaces on
+    # any route that accepts a body, but multipart routes (jumps,
+    # jumper-attachments) are the realistic raise sites.
+    "413": _ref("PayloadTooLarge"),
     "422": _ref("ValidationFailed"),
     "500": _ref("Internal"),
 }
@@ -238,6 +244,7 @@ ERR_CREATE: dict[str | int, dict[str, Any]] = {
 ERR_UPDATE: dict[str | int, dict[str, Any]] = {
     "404": _ref("NotFound"),
     "409": _ref("Conflict"),
+    "413": _ref("PayloadTooLarge"),
     "422": _ref("ValidationFailed"),
     "500": _ref("Internal"),
 }

@@ -90,6 +90,30 @@ class Settings(BaseSettings):
     # button. Env: ``SKYDIVE_UPDATE_CHECK_REPO``.
     update_check_repo: str | None = Field(default=None)
 
+    # Per-request total body cap (bytes). The middleware rejects
+    # requests whose ``Content-Length`` (or streamed body) exceeds
+    # this with 413 problem+json + ``code=payload_too_large`` per
+    # Slice 10. The total includes multipart boundaries and form
+    # fields, not just attachment payloads — set high enough to
+    # cover a plausible multi-video jump's full upload. 5 GiB is
+    # the v0.1 default; a user with a Bigway-sized post-jump
+    # turnaround can raise it via env / TOML.
+    #
+    # Env: ``SKYDIVE_MAX_REQUEST_BYTES``.
+    max_request_bytes: int = Field(default=5 * 1024 * 1024 * 1024, ge=1)
+
+    # Per-file cap (bytes). Enforced inside the upload chunk loop
+    # in ``backend/api/jumps.py:_upload_chunks`` (and the matching
+    # constant in ``backend/api/jumpers.py`` for credential cards).
+    # A single attachment over this size raises
+    # ``PayloadTooLargeError`` mid-stream; the partial tmp file is
+    # cleaned up by ``atomic_write_stream``'s context-manager
+    # rollback. 2 GiB matches the largest practical single skydive
+    # video file in v0.1.
+    #
+    # Env: ``SKYDIVE_MAX_FILE_BYTES``.
+    max_file_bytes: int = Field(default=2 * 1024 * 1024 * 1024, ge=1)
+
     # Whether unhandled-exception responses include the exception
     # type and message in the 500 problem+json body. The full
     # traceback always goes to the structured log via ``exc_info``
