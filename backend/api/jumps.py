@@ -201,7 +201,14 @@ def create_jump_route(
     ),
 )
 def list_jumps_route(
-    limit: int = Query(100, ge=1, le=1000),
+    # ``le=10000`` mirrors the "give me every jump for stats" pattern
+    # callers like MyRig.jsx and Dropzones.jsx already use to compute
+    # per-rig / per-DZ jump counts. A 10000-row payload is a few MB
+    # at worst — fine for a single-user desktop app. The sibling
+    # list endpoints (rigs, dropzones, mains, …) stay at le=1000
+    # because those entity sets stay small (1–10 typical, 100s
+    # extreme).
+    limit: int = Query(100, ge=1, le=10000),
     offset: int = Query(0, ge=0),
     logbook_root: Path = Depends(get_logbook_root),
     user_id: str = Depends(get_user_id),
