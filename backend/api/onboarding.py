@@ -1,4 +1,4 @@
-"""REST endpoints for the first-run onboarding wizard (D64).
+"""REST endpoints for the first-run onboarding wizard (D65).
 
 Thin by design (D7): each handler is a translation layer — pull
 ``logbook_root`` and ``user_id`` from dependencies, call
@@ -33,7 +33,7 @@ router = APIRouter(prefix="/api/v1/onboarding", tags=["onboarding"])
 @router.get(
     "",
     response_model=OnboardingState,
-    summary="Read first-run wizard state (D64)",
+    summary="Read first-run wizard state (D65)",
     description=(
         "Return whether the sentinel file ``.onboarding_completed`` "
         "is present at the logbook root, alongside three flags "
@@ -56,7 +56,7 @@ def get_state_route(
     "/complete",
     response_model=OnboardingState,
     status_code=status.HTTP_200_OK,
-    summary="Mark the wizard complete (D64)",
+    summary="Mark the wizard complete (D65)",
     description=(
         "Stamp the sentinel file at the logbook root with the "
         "current timestamp (D17) and the supplied "

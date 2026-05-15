@@ -227,7 +227,7 @@ def create_app(*, mount_frontend: bool = True) -> FastAPI:
     # and services.reindex_service — backend logic was already there
     # for the CLIs, this just exposes the same to the desktop UI).
     app.include_router(ops_router)
-    # First-run wizard state (D64). Owns the sentinel; the per-step
+    # First-run wizard state (D65). Owns the sentinel; the per-step
     # creates reuse the existing entity routers above.
     app.include_router(onboarding_router)
 

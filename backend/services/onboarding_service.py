@@ -1,4 +1,4 @@
-"""Onboarding service — wizard state + sentinel (D64).
+"""Onboarding service — wizard state + sentinel (D65).
 
 Owns two responsibilities:
 
@@ -18,7 +18,7 @@ do not fall back to "show the wizard again", because re-opening the
 wizard after a user said "done" would be a worse failure mode than
 displaying ``null`` timestamps in Settings.
 
-Per D64 this is the smallest viable per-logbook state layer. A
+Per D65 this is the smallest viable per-logbook state layer. A
 ``settings.xml`` with an XSD becomes worthwhile when a second flag
 arrives (the migration is one read of the sentinel + one write into
 the new file).
@@ -162,7 +162,7 @@ def _has_any_subfolder(logbook_root: Path, dir_name: str) -> bool:
 
 
 def get_state(logbook_root: Path, user_id: str) -> OnboardingState:
-    """Return the current wizard state for ``logbook_root`` (D64).
+    """Return the current wizard state for ``logbook_root`` (D65).
 
     Pure read — does not take the writer lock. The three ``has_*``
     flags are derived from disk + index at call time; the SPA polls
@@ -187,7 +187,7 @@ def complete(
     user_id: str,
     payload: OnboardingComplete,
 ) -> OnboardingState:
-    """Stamp the sentinel and return the updated state (D64).
+    """Stamp the sentinel and return the updated state (D65).
 
     Idempotent — calling twice with the same status rewrites the
     sentinel with a fresh ``completed_at`` but leaves the

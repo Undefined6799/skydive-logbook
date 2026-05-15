@@ -1,4 +1,4 @@
-"""Integration tests for ``/api/v1/onboarding`` (D64).
+"""Integration tests for ``/api/v1/onboarding`` (D65).
 
 Covers HTTP shape only — service-layer details live in
 test_onboarding_service. The dependency-override pattern matches

@@ -1,4 +1,4 @@
-"""Service-layer tests for onboarding_service (D64).
+"""Service-layer tests for onboarding_service (D65).
 
 Covers sentinel read/write + the three "has_*" detection helpers.
 Each test uses a real ``tmp_path``-backed logbook (CLAUDE.md §7 —

@@ -3,7 +3,7 @@ import { FolderOpen, AlertTriangle, Loader2 } from 'lucide-react';
 import { Section } from './formAtoms';
 import { StepHeader, StepFooter } from './StepFrame';
 
-// First wizard step (D64 update): pick where the logbook lives.
+// First wizard step (D65 update): pick where the logbook lives.
 // Reuses the pywebview JsApi the Settings → LogbookSection already
 // wires (``current_logbook_folder`` reads the path,
 // ``change_logbook_folder`` pops the native picker + writes config,

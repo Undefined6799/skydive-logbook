@@ -1,4 +1,4 @@
-"""Pydantic models for the first-run onboarding wizard (D64).
+"""Pydantic models for the first-run onboarding wizard (D65).
 
 Unlike the rest of ``backend/models/``, these are NOT on-disk entities
 — there is no XSD, no XML serialiser. The onboarding sentinel lives
@@ -37,7 +37,7 @@ class OnboardingStatus(StrEnum):
 
 
 class OnboardingState(BaseModel):
-    """Response shape for ``GET /api/v1/onboarding`` (D64).
+    """Response shape for ``GET /api/v1/onboarding`` (D65).
 
     The SPA renders the wizard when ``completed`` is False and at
     least one of ``has_jumper`` / ``has_dropzones`` / ``has_rigs`` is
@@ -84,7 +84,7 @@ class OnboardingState(BaseModel):
 
 
 class OnboardingComplete(BaseModel):
-    """Request body for ``POST /api/v1/onboarding/complete`` (D64).
+    """Request body for ``POST /api/v1/onboarding/complete`` (D65).
 
     A single field — the recorded end-state — constrained to the
     two-value :class:`OnboardingStatus` enum. A malformed body fails
