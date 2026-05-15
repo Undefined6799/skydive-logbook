@@ -438,26 +438,28 @@ function DiagnosticsSection() {
 
 function UpdatesSection() {
   // Five states the backend can return + four UI states: idle, busy,
-  // result-OK, result-error. The endpoint itself returns 503
+  // result-OK, result-error. The endpoint returns 503
   // ``update_check_disabled`` when ``Settings.update_check_repo`` is
-  // unset — we treat that as "feature off" and hide the whole card so
-  // the user doesn't see a button that can never work.
+  // unset (no public release feed for this build). Previously the
+  // card hid itself silently when that happened — the user clicked
+  // the button and the whole card vanished with no feedback. Now we
+  // surface an inline "update checks aren't configured for this
+  // build" message so the user knows the click was acknowledged.
   const [busy, setBusy] = useState(false);
   const [result, setResult] = useState(null); // { status, current, latest, release_url, detail }
   const [error, setError] = useState(null);
-  const [hidden, setHidden] = useState(false);
+  const [disabled, setDisabled] = useState(false);
 
   async function handleCheck() {
     setBusy(true);
     setError(null);
+    setDisabled(false);
     try {
       const r = await checkForUpdates();
       setResult(r);
     } catch (err) {
-      // Disabled on the backend → hide the card entirely. Any other
-      // error surfaces in the UI so the user can retry.
       if (err instanceof ApiError && err.problem?.code === 'update_check_disabled') {
-        setHidden(true);
+        setDisabled(true);
       } else {
         setError(err);
       }
@@ -465,8 +467,6 @@ function UpdatesSection() {
       setBusy(false);
     }
   }
-
-  if (hidden) return null;
 
   function openReleasePage() {
     if (!result?.release_url) return;
@@ -560,6 +560,24 @@ function UpdatesSection() {
       {result && result.status === 'up_to_date' && (
         <div className="mt-3 text-[11px] text-neutral-500">
           You're running <span className="font-mono text-neutral-300">{result.current}</span>, the latest release.
+        </div>
+      )}
+
+      {disabled && (
+        <div
+          className="mt-3 p-3 rounded-lg flex items-start gap-2"
+          style={{ background: 'var(--surface-2)', border: '0.5px solid var(--border)' }}
+        >
+          <AlertTriangle
+            className="w-3.5 h-3.5 flex-shrink-0 mt-0.5"
+            style={{ color: 'var(--text-muted)' }}
+          />
+          <div className="text-[12px] text-neutral-400 leading-relaxed">
+            Update checks aren't configured for this build. To enable
+            them, set <span className="font-mono text-neutral-300">update_check_repo</span>{' '}
+            in <span className="font-mono text-neutral-300">config.toml</span> to a
+            GitHub repo (e.g. <span className="font-mono text-neutral-300">owner/skydive-logbook</span>).
+          </div>
         </div>
       )}
 
