@@ -14,6 +14,24 @@ addenda; tracked as "Wave A" + "Wave B" in
 ``reviews/2026-05-15-slice-plan.md``.
 
 ### Added — backend
+- **Request + per-file size caps** (Slice 10):
+  - ``Settings.max_request_bytes`` (default 5 GiB,
+    env ``SKYDIVE_MAX_REQUEST_BYTES``) — enforced by the new
+    ``RequestSizeLimitMiddleware`` via Content-Length pre-check
+    plus a streaming byte-count fallback.
+  - ``Settings.max_file_bytes`` (default 2 GiB,
+    env ``SKYDIVE_MAX_FILE_BYTES``) — enforced inside the
+    multipart upload chunk loops (jumps + jumpers).
+  - Both surfaces produce 413 ``application/problem+json`` with
+    ``code=payload_too_large``. The new
+    ``PayloadTooLargeError`` ServiceError subclass is the
+    in-process typed exception; the middleware-emitted 413
+    bypasses FastAPI's exception handlers (ASGI scope) but
+    produces the same wire shape.
+  - 413 added to ``ERR_CREATE`` and ``ERR_UPDATE`` so every
+    body-accepting route advertises the response. New
+    ``PayloadTooLarge`` reusable response component in
+    OpenAPI components.
 - **Uniform error envelope**: every 4xx and 5xx on the wire is now
   ``application/problem+json`` per RFC 9457. Adds two new exception
   handlers (Slice 5):

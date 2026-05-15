@@ -37,6 +37,7 @@ from .errors import (
 from .jumpers import router as jumpers_router
 from .jumps import router as jumps_router
 from .mains import router as mains_router
+from .middleware import RequestSizeLimitMiddleware
 from .onboarding import router as onboarding_router
 from .openapi import custom_openapi
 from .ops import router as ops_router
@@ -80,6 +81,21 @@ def create_app(*, mount_frontend: bool = True) -> FastAPI:
     # X-Request-Id response header. Pure-ASGI implementation because
     # Starlette's BaseHTTPMiddleware breaks ContextVar propagation (D27).
     app.add_middleware(CorrelationIdMiddleware)
+
+    # Reject oversize request bodies before the application sees them
+    # (Slice 10). Reads ``max_request_bytes`` from the resolved
+    # Settings. ``add_middleware`` builds the stack outside-in, so
+    # adding this AFTER CorrelationIdMiddleware places it INSIDE
+    # the correlation wrapper — the 413 response still flows through
+    # the X-Request-Id stamping path. Read ``get_settings()`` at
+    # build time rather than per-request so a Settings change
+    # requires an app rebuild (matches the existing CORS posture
+    # which also reads its allow-list at construction time).
+    _settings_at_build = get_settings()
+    app.add_middleware(
+        RequestSizeLimitMiddleware,
+        max_bytes=_settings_at_build.max_request_bytes,
+    )
 
     # CORS for the Vite dev server (frontend/) running on a different
     # origin than uvicorn during development. The packaged pywebview

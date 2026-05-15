@@ -246,6 +246,29 @@ class ValidationFailedError(ServiceError):
     title = "Validation Failed"
 
 
+class PayloadTooLargeError(ServiceError):
+    """Request body or a single uploaded file exceeded a configured cap.
+
+    Raised by:
+
+    * :class:`backend.api.rest.RequestSizeLimitMiddleware` when the
+      total request body (Content-Length pre-check or streamed
+      byte count) exceeds ``Settings.max_request_bytes``.
+    * The upload chunk loops in ``backend/api/jumps.py`` and
+      ``backend/api/jumpers.py`` when a single file's running byte
+      count exceeds ``Settings.max_file_bytes``.
+
+    Both paths surface 413 ``application/problem+json`` per D16
+    with ``code=payload_too_large``. The ``details`` keyword extras
+    carry the offending size and the cap so clients can render a
+    precise message ("video.mp4 is 3.1 GiB; the per-file cap is
+    2.0 GiB — split the file or raise the cap in Settings").
+    """
+    http_status = 413
+    code = "payload_too_large"
+    title = "Payload Too Large"
+
+
 def validation_failed_from_pydantic(
     exc: ValidationError, message: str = "validation failed"
 ) -> ValidationFailedError:
