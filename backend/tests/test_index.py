@@ -16,6 +16,7 @@ from backend.storage.index import (
     INDEX_FILENAME,
     INDEX_SCHEMA_VERSION,
     IndexOpenResult,
+    IndexSchemaTooNewError,
     open_index,
 )
 
@@ -182,10 +183,15 @@ class TestVersionMismatchRebuilds:
         finally:
             second.conn.close()
 
-    def test_newer_version_also_drops_and_rebuilds(self, tmp_path):
-        # Downgrade scenario per D26: a user flips back from a future
-        # app to the current one. The higher user_version on disk is
-        # still a mismatch and must drop+rebuild to the current schema.
+    def test_newer_version_refuses_instead_of_downgrading(self, tmp_path):
+        # Slice-8 amendment to D26: a user running an older binary
+        # against a newer logbook (PRAGMA user_version > current) must
+        # be refused, not silently downgraded. Downgrading drops
+        # columns the older build cannot repopulate from XML and
+        # restamps user_version to a lower value, masking the fact
+        # that the user is on the wrong binary. The new contract
+        # raises IndexSchemaTooNewError so main.py can exit with a
+        # clear actionable message.
         first = open_index(tmp_path)
         try:
             first.conn.execute(
@@ -194,23 +200,23 @@ class TestVersionMismatchRebuilds:
         finally:
             first.conn.close()
 
-        second = open_index(tmp_path)
-        try:
-            assert second.schema_was_rebuilt is True
-            assert second.previous_version == INDEX_SCHEMA_VERSION + 1
-            assert _user_version(second.conn) == INDEX_SCHEMA_VERSION
-        finally:
-            second.conn.close()
+        with pytest.raises(IndexSchemaTooNewError):
+            open_index(tmp_path)
 
-    def test_legacy_table_is_dropped(self, tmp_path):
-        # Guards the completeness of the drop loop. A stale table from
-        # a prior schema (e.g. a renamed-away table) must not survive
-        # a rebuild. Without dynamic enumeration via sqlite_master, a
+    def test_legacy_table_is_dropped_on_older_on_disk(self, tmp_path):
+        # Guards the completeness of the drop loop in the legitimate
+        # older-on-disk rebuild branch. A stale table from a prior
+        # schema (e.g. a renamed-away table) must not survive a
+        # rebuild. Without dynamic enumeration via sqlite_master, a
         # naive "drop the tables I know about" loop would leak it.
+        #
+        # Uses user_version = 1 (older than any shipped schema, but
+        # nonzero so Branch 1 / fresh doesn't fire) per the Slice-8
+        # contract — the newer-on-disk path no longer rebuilds.
         first = open_index(tmp_path)
         try:
             first.conn.execute("CREATE TABLE legacy_obsolete (x TEXT)")
-            first.conn.execute("PRAGMA user_version = 99")
+            first.conn.execute("PRAGMA user_version = 1")
         finally:
             first.conn.close()
 

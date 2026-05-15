@@ -46,6 +46,29 @@ def main() -> int:
     # boots so startup and lifespan records already render as JSON Lines.
     configure_logging(settings.log_level)
 
+    # Defensive WARNING on non-loopback bind. The default posture (D48)
+    # is single-user, loopback-only, no auth surface. A user who sets
+    # SKYDIVE_BIND_HOST=0.0.0.0 thinking "I want to reach this from my
+    # phone" exposes an unauthenticated REST surface to the LAN; the
+    # ``Settings.expose_internal_errors`` auto-default helps but is
+    # only one of several hardening gaps (no auth, no rate limit, no
+    # body-size middleware). Loud warning so the user sees this in
+    # the launcher's terminal and in any log shipping.
+    if not settings.is_loopback_bind():
+        _logger.warning(
+            "non_loopback_bind",
+            extra={
+                "bind_host": settings.bind_host,
+                "bind_port": settings.bind_port,
+                "message": (
+                    "REST API is bound to a non-loopback address with no "
+                    "authentication surface. Anyone reachable at this "
+                    "address can read and modify the logbook. See "
+                    "SECURITY.md and DECISIONS.md §D48."
+                ),
+            },
+        )
+
     try:
         lock = acquire(settings.logbook_root)
     except LockError as exc:

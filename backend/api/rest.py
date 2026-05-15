@@ -20,6 +20,7 @@ from backend.observability.logging import CorrelationIdMiddleware
 
 from .aads import router as aads_router
 from .containers import router as containers_router
+from .deps import get_settings
 from .dropzones import router as dropzones_router
 from .errors import (
     InternalServerError,
@@ -124,17 +125,34 @@ def create_app(*, mount_frontend: bool = True) -> FastAPI:
     async def on_unhandled_exception(  # pyright: ignore[reportUnusedFunction]  # registered via decorator
         request: Request, exc: Exception
     ) -> JSONResponse:
-        # Print the full traceback to stderr so a user running the
-        # desktop launcher in a terminal can see it without tailing
-        # the JSON log. The structured logger below still emits the
-        # event; this is purely for human visibility.
-        print(
-            f"\n=== unhandled exception in {request.url.path} ===",
-            file=sys.stderr,
-            flush=True,
+        # ``expose_internal_errors`` gates both the stderr traceback
+        # and the wire-visible detail below. On loopback (single-user
+        # desktop) the default is True — useful for local debugging.
+        # On any non-loopback bind the default is False — keep
+        # tracebacks out of stderr that might be redirected to a
+        # shared log sink. The full traceback always reaches the
+        # structured logger below via ``exc_info=``.
+        #
+        # Honour ``app.dependency_overrides[get_settings]`` so tests
+        # can swap in a Settings with a different flag value. An
+        # exception handler is NOT a normal dependency-injected
+        # endpoint, so FastAPI's override machinery doesn't apply
+        # automatically — we look it up by hand.
+        settings_fn = request.app.dependency_overrides.get(
+            get_settings, get_settings
         )
-        traceback.print_exception(type(exc), exc, exc.__traceback__)
-        print("=== end traceback ===\n", file=sys.stderr, flush=True)
+        settings = settings_fn()
+        if settings.expose_internal_errors:
+            # Print the full traceback to stderr so a user running
+            # the desktop launcher in a terminal can see it without
+            # tailing the JSON log.
+            print(
+                f"\n=== unhandled exception in {request.url.path} ===",
+                file=sys.stderr,
+                flush=True,
+            )
+            traceback.print_exception(type(exc), exc, exc.__traceback__)
+            print("=== end traceback ===\n", file=sys.stderr, flush=True)
 
         # Per D16: application/problem+json is the ONLY error shape at
         # the API boundary. The ServiceError handler above catches every
@@ -175,13 +193,18 @@ def create_app(*, mount_frontend: bool = True) -> FastAPI:
             exc_info=exc,
         )
         request_id = request_id_of(request)
-        # v0.1 is a single-user desktop app bound to loopback (D20).
-        # Surface the exception type and message in the response body
-        # so the user can read it in the modal/error banner without
-        # tailing logs. When v0.1 grows beyond loopback (multi-user,
-        # remote API), this branch tightens to honor D16's safety
-        # concern about leaking internal state.
-        detail = f"{type(exc).__name__}: {exc}"
+        # Detail surfacing is gated by ``Settings.expose_internal_errors``
+        # (auto-defaults True on loopback, False otherwise per D-NEW).
+        # When False, the wire body says generic; the request_id in the
+        # response correlates to the structured log line that does
+        # carry the full traceback for operator debugging.
+        if settings.expose_internal_errors:
+            detail = f"{type(exc).__name__}: {exc}"
+        else:
+            detail = (
+                "an internal error occurred; see server logs "
+                f"(request_id={request_id})"
+            )
         response = error_response(
             InternalServerError(detail),
             request_id=request_id,
