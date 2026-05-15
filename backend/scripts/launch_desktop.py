@@ -95,7 +95,29 @@ _WELCOME_HTML = """\
 """
 
 
+def _is_frozen() -> bool:
+    """Running inside a PyInstaller bundle (.app on macOS, .exe on
+    Windows, AppImage on Linux). PyInstaller sets ``sys.frozen`` and
+    ``sys._MEIPASS`` (the directory the bundle's data files were
+    extracted to / are mapped from)."""
+    return getattr(sys, "frozen", False) and hasattr(sys, "_MEIPASS")
+
+
 def _project_root() -> Path:
+    """Return the directory holding ``frontend/``, ``backend/``, etc.
+
+    In dev mode that's the repo root (``Path(__file__) / .. / .. / ..``).
+    In a packaged build it's PyInstaller's ``sys._MEIPASS`` — the
+    extracted-resources directory that holds whatever the spec's
+    ``datas`` block put there. The spec maps ``frontend/dist`` →
+    ``frontend/dist`` inside the bundle, so resolving relative to
+    ``_MEIPASS`` finds the same paths the dev-mode layout uses."""
+    if _is_frozen():
+        # ``sys._MEIPASS`` exists only in PyInstaller bundles; the
+        # ``_is_frozen`` guard above gates the access. The pragma
+        # documents both that fact and the reason pyright would
+        # otherwise flag it.
+        return Path(sys._MEIPASS)  # pyright: ignore[reportAttributeAccessIssue]  # PyInstaller-only attr
     return Path(__file__).resolve().parent.parent.parent
 
 
@@ -144,6 +166,22 @@ def _sources_newer_than_dist(frontend_dir: Path) -> bool:
 
 def _ensure_frontend_built(frontend_dir: Path) -> bool:
     dist = frontend_dir / "dist"
+    # In a packaged build the frontend was built at package time and
+    # bundled into the .app / .exe / AppImage. There is no source
+    # tree to rebuild from \u2014 and the bundle directory is read-only on
+    # most install paths (e.g. ``/Applications`` on macOS), so an
+    # ``npm install`` would fail anyway. Trust the bundled dist and
+    # bail with a clear message if it's missing (which would mean a
+    # broken build artifact).
+    if _is_frozen():
+        if _looks_like_vite_build(dist):
+            return True
+        sys.stderr.write(
+            f"Packaged build is missing the bundled frontend at {dist}. "
+            "This is a build-time bug \u2014 rebuild the .app with the "
+            "frontend already built (frontend/dist/) and re-bundle.\n"
+        )
+        return False
     if _looks_like_vite_build(dist) and not _sources_newer_than_dist(frontend_dir):
         return True
     if dist.is_dir() and any(dist.iterdir()):
@@ -193,8 +231,17 @@ def _wait_for_backend(timeout_s: float = 15.0) -> bool:
 
 
 def _run_uvicorn() -> None:
+    # Pass the app object directly rather than the ``"backend.api.rest:app"``
+    # string. uvicorn's string-form import goes through
+    # ``importlib.import_module`` which resolves names through ``sys.path``
+    # — fine in a normal install but unreliable inside a PyInstaller
+    # bundle, where the module table is structured differently and the
+    # bundled ``backend`` package isn't always discoverable by the same
+    # import path. Importing here means PyInstaller catches the
+    # dependency at build time and the runtime lookup is a no-op.
+    from backend.api.rest import app as _app
     config = uvicorn.Config(
-        "backend.api.rest:app",
+        _app,
         host=_BACKEND_HOST,
         port=_BACKEND_PORT,
         log_level="info",
