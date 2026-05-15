@@ -41,6 +41,7 @@ from pydantic import BaseModel, ConfigDict
 from ..models.rig import Rig, RigCreate, RigUpdate
 from ..services import rig_service
 from .deps import get_logbook_root, get_user_id
+from .openapi import ERR_CREATE, ERR_DELETE, ERR_LIST, ERR_READ, ERR_UPDATE
 
 
 class SwapMainRequest(BaseModel):
@@ -77,6 +78,8 @@ router = APIRouter(prefix="/api/v1/rigs", tags=["rigs"])
     "",
     response_model=Rig,
     status_code=status.HTTP_201_CREATED,
+    operation_id="create_rig",
+    responses=ERR_CREATE,
     summary="Create a rig",
     description=(
         "Persist a new rig. Body is JSON matching ``RigCreate`` — "
@@ -110,6 +113,8 @@ def create_rig_route(
 @router.get(
     "",
     response_model=list[Rig],
+    operation_id="list_rigs",
+    responses=ERR_LIST,
     summary="List rigs",
     description=(
         "Return every rig under ``rigs/``, newest first by "
@@ -139,6 +144,8 @@ def list_rigs_route(
 @router.get(
     "/{rig_id}",
     response_model=Rig,
+    operation_id="get_rig",
+    responses=ERR_READ,
     summary="Read a rig by id",
     description=(
         "Fetch the full rig including ``repack_history`` and "
@@ -159,6 +166,8 @@ def get_rig_route(
 @router.put(
     "/{rig_id}",
     response_model=Rig,
+    operation_id="update_rig",
+    responses=ERR_UPDATE,
     summary="Update a rig",
     description=(
         "Full replace. Body is JSON matching ``RigUpdate``. Per "
@@ -193,6 +202,8 @@ def update_rig_route(
 @router.post(
     "/reorder",
     response_model=list[Rig],
+    operation_id="reorder_rigs",
+    responses=ERR_UPDATE,
     summary="Reorder rigs (D59)",
     description=(
         "Rewrite the carousel order. Body is JSON ``{ \"rig_ids\": "
@@ -227,6 +238,8 @@ def reorder_rigs_route(
 @router.post(
     "/{rig_id}/swap_main",
     response_model=Rig,
+    operation_id="swap_rig_main",
+    responses=ERR_UPDATE,
     summary="Swap a rig's main canopy (D37, S.2)",
     description=(
         "Replace the rig's ``current_main_id`` with a different "
@@ -265,6 +278,8 @@ def swap_main_route(
 @router.put(
     "/{rig_id}/star",
     response_model=Rig,
+    operation_id="star_rig",
+    responses=ERR_UPDATE,
     summary="Star a rig as the default for the jump-log form (D58)",
     description=(
         "Move the logbook's single \"starred\" flag to this rig. "
@@ -297,6 +312,8 @@ def set_star_route(
     "/{rig_id}",
     status_code=status.HTTP_204_NO_CONTENT,
     response_class=Response,
+    operation_id="delete_rig",
+    responses=ERR_DELETE,
     summary="Soft-delete a rig (D19, D37 cascade)",
     description=(
         "Move ``rigs/<nickname>/`` to "

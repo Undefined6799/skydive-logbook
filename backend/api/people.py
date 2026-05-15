@@ -34,6 +34,7 @@ from fastapi import APIRouter, Depends, Query, Response, status
 from ..models.person import Person, PersonCreate, PersonSummary, PersonUpdate
 from ..services import people_service
 from .deps import get_logbook_root, get_user_id
+from .openapi import ERR_CREATE, ERR_DELETE, ERR_LIST, ERR_READ, ERR_UPDATE
 
 router = APIRouter(prefix="/api/v1/people", tags=["people"])
 
@@ -41,6 +42,8 @@ router = APIRouter(prefix="/api/v1/people", tags=["people"])
 @router.post(
     "",
     response_model=Person,
+    operation_id="create_person",
+    responses=ERR_CREATE,
     status_code=status.HTTP_201_CREATED,
     summary="Create a person",
     description=(
@@ -69,6 +72,8 @@ def create_person_route(
 @router.get(
     "",
     response_model=list[PersonSummary],
+    operation_id="list_persons",
+    responses=ERR_LIST,
     summary="List people",
     description=(
         "Return people as compact summaries, ordered alphabetically "
@@ -92,6 +97,8 @@ def list_people_route(
 @router.get(
     "/{person_id}",
     response_model=Person,
+    operation_id="get_person",
+    responses=ERR_READ,
     summary="Read a person by id",
     description=(
         "Fetch the full person including every optional field. The "
@@ -111,6 +118,8 @@ def get_person_route(
 @router.put(
     "/{person_id}",
     response_model=Person,
+    operation_id="update_person",
+    responses=ERR_UPDATE,
     summary="Update a person",
     description=(
         "Full replace. Body is JSON matching ``PersonUpdate`` — "
@@ -136,6 +145,8 @@ def update_person_route(
 @router.delete(
     "/{person_id}",
     status_code=status.HTTP_204_NO_CONTENT,
+    operation_id="delete_person",
+    responses=ERR_DELETE,
     response_class=Response,
     summary="Soft-delete a person (D19, D54)",
     description=(

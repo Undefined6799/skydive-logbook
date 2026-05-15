@@ -26,6 +26,7 @@ from fastapi import APIRouter, Depends, status
 from ..models.onboarding import OnboardingComplete, OnboardingState
 from ..services import onboarding_service
 from .deps import get_logbook_root, get_user_id
+from .openapi import ERR_LIST, ERR_UPDATE
 
 router = APIRouter(prefix="/api/v1/onboarding", tags=["onboarding"])
 
@@ -33,6 +34,8 @@ router = APIRouter(prefix="/api/v1/onboarding", tags=["onboarding"])
 @router.get(
     "",
     response_model=OnboardingState,
+    operation_id="get_onboarding_state",
+    responses=ERR_LIST,
     summary="Read first-run wizard state (D65)",
     description=(
         "Return whether the sentinel file ``.onboarding_completed`` "
@@ -56,6 +59,8 @@ def get_state_route(
     "/complete",
     response_model=OnboardingState,
     status_code=status.HTTP_200_OK,
+    operation_id="complete_onboarding",
+    responses=ERR_UPDATE,
     summary="Mark the wizard complete (D65)",
     description=(
         "Stamp the sentinel file at the logbook root with the "

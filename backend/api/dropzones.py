@@ -35,6 +35,7 @@ from fastapi import APIRouter, Depends, Query, Response, status
 from ..models.dropzone import Dropzone, DropzoneCreate, DropzoneSummary, DropzoneUpdate
 from ..services import dropzone_service
 from .deps import get_logbook_root, get_user_id
+from .openapi import ERR_CREATE, ERR_DELETE, ERR_LIST, ERR_READ, ERR_UPDATE
 
 router = APIRouter(prefix="/api/v1/dropzones", tags=["dropzones"])
 
@@ -42,6 +43,8 @@ router = APIRouter(prefix="/api/v1/dropzones", tags=["dropzones"])
 @router.post(
     "",
     response_model=Dropzone,
+    operation_id="create_dropzone",
+    responses=ERR_CREATE,
     status_code=status.HTTP_201_CREATED,
     summary="Create a dropzone",
     description=(
@@ -68,6 +71,8 @@ def create_dropzone_route(
 @router.get(
     "",
     response_model=list[DropzoneSummary],
+    operation_id="list_dropzones",
+    responses=ERR_LIST,
     summary="List dropzones",
     description=(
         "Return dropzones as compact summaries, ordered alphabetically "
@@ -92,6 +97,8 @@ def list_dropzones_route(
 @router.get(
     "/{dropzone_id}",
     response_model=Dropzone,
+    operation_id="get_dropzone",
+    responses=ERR_READ,
     summary="Read a dropzone by id",
     description=(
         "Fetch the full dropzone including every optional field. "
@@ -112,6 +119,8 @@ def get_dropzone_route(
 @router.put(
     "/{dropzone_id}",
     response_model=Dropzone,
+    operation_id="update_dropzone",
+    responses=ERR_UPDATE,
     summary="Update a dropzone",
     description=(
         "Full replace. Body is JSON matching ``DropzoneUpdate`` — "
@@ -136,6 +145,8 @@ def update_dropzone_route(
 @router.put(
     "/{dropzone_id}/star",
     response_model=Dropzone,
+    operation_id="star_dropzone",
+    responses=ERR_UPDATE,
     summary="Star a dropzone as the logbook default (D60)",
     description=(
         "Set the target dropzone as the single starred default for "
@@ -161,6 +172,8 @@ def star_dropzone_route(
 @router.delete(
     "/{dropzone_id}",
     status_code=status.HTTP_204_NO_CONTENT,
+    operation_id="delete_dropzone",
+    responses=ERR_DELETE,
     response_class=Response,
     summary="Soft-delete a dropzone (D19, D44)",
     description=(

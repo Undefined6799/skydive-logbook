@@ -43,6 +43,7 @@ from ..services.update_check_service import check_for_updates
 from ..storage.verify import verify_logbook
 from .deps import get_logbook_root, get_settings, get_user_id
 from .errors import ServiceError
+from .openapi import ERR_LIST, ERR_UPDATE
 
 router = APIRouter(prefix="/api/v1", tags=["ops"])
 
@@ -90,6 +91,8 @@ class StatsResponse(BaseModel):
 @router.get(
     "/verify",
     response_model=VerifyResponse,
+    operation_id="run_verify",
+    responses=ERR_LIST,
     summary="Run integrity verification (D2 / D25)",
     description=(
         "Walks every jump folder and runs the D25 checks: XSD-valid "
@@ -116,6 +119,8 @@ def verify_route(
 @router.get(
     "/stats",
     response_model=StatsResponse,
+    operation_id="get_stats",
+    responses=ERR_LIST,
     summary="Career-wide jump aggregations (D14 §4)",
     description=(
         "Walks every jump folder once, parses each ``jump.xml``, and "
@@ -199,6 +204,8 @@ def _current_app_version() -> str:
 @router.get(
     "/updates/check",
     response_model=UpdateCheckResponse,
+    operation_id="check_for_updates",
+    responses=ERR_LIST,
     summary="User-initiated check for app updates",
     description=(
         "Calls the GitHub Releases API for the configured repo and "
@@ -236,6 +243,8 @@ def update_check_route(
 @router.post(
     "/reindex",
     response_model=ReindexResponse,
+    operation_id="run_reindex",
+    responses=ERR_UPDATE,
     summary="Rebuild the SQLite index from XML on disk (D3 / D26)",
     description=(
         "Walks every active jump folder, parses each ``jump.xml``, and "

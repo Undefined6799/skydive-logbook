@@ -29,6 +29,7 @@ from fastapi import APIRouter, Depends, Query, Response, status
 from ..models.main import Main, MainCreate, MainUpdate
 from ..services import main_service
 from .deps import get_logbook_root, get_user_id
+from .openapi import ERR_CREATE, ERR_DELETE, ERR_LIST, ERR_READ, ERR_UPDATE
 
 router = APIRouter(prefix="/api/v1/mains", tags=["mains"])
 
@@ -36,6 +37,8 @@ router = APIRouter(prefix="/api/v1/mains", tags=["mains"])
 @router.post(
     "",
     response_model=Main,
+    operation_id="create_main",
+    responses=ERR_CREATE,
     status_code=status.HTTP_201_CREATED,
     summary="Create a main canopy",
     description=(
@@ -57,6 +60,8 @@ def create_main_route(
 @router.get(
     "",
     response_model=list[Main],
+    operation_id="list_mains",
+    responses=ERR_LIST,
     summary="List main canopies",
     description=(
         "Return every main newest first by ``created_at``. Walks "
@@ -77,6 +82,8 @@ def list_mains_route(
 @router.get(
     "/{main_id}",
     response_model=Main,
+    operation_id="get_main",
+    responses=ERR_READ,
     summary="Read a main canopy by id",
     description=(
         "Fetch the full main including current_lineset and "
@@ -95,6 +102,8 @@ def get_main_route(
 @router.put(
     "/{main_id}",
     response_model=Main,
+    operation_id="update_main",
+    responses=ERR_UPDATE,
     summary="Update a main canopy",
     description=(
         "Full replace. Lineset state is part of the payload; clients "
@@ -115,6 +124,8 @@ def update_main_route(
 @router.delete(
     "/{main_id}",
     status_code=status.HTTP_204_NO_CONTENT,
+    operation_id="delete_main",
+    responses=ERR_DELETE,
     response_class=Response,
     summary="Soft-delete a main canopy (D19)",
     description=(
