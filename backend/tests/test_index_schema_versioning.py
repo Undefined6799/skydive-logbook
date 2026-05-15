@@ -90,8 +90,19 @@ def test_open_index_refusal_closes_the_connection(logbook_root: Path) -> None:
     """A refusal must not leak the sqlite3.Connection.
 
     The exception path runs ``conn.close()`` before raising; this test
-    asserts that no file lock survives by reopening the index from a
-    fresh connection.
+    asserts the close happened by acquiring a *write* lock on the
+    file from a fresh connection. The earlier form of this test read
+    ``PRAGMA user_version`` from the second connection, but a read
+    under SQLite WAL mode never waits on an existing reader — the
+    test would pass even with a leaked connection. A write does:
+    SQLite's RESERVED lock on the database file is exclusive, so a
+    leaked write-capable connection from the failed open would
+    produce a ``database is locked`` error here within the timeout.
+
+    On a single-threaded test process, ``isolation_level=None``
+    + ``PRAGMA journal_mode = WAL`` (the production posture) lets
+    the writer proceed without waiting if the prior connection was
+    properly closed.
     """
     result = open_index(logbook_root)
     result.conn.close()
@@ -102,12 +113,18 @@ def test_open_index_refusal_closes_the_connection(logbook_root: Path) -> None:
     with pytest.raises(IndexSchemaTooNewError):
         open_index(logbook_root)
 
-    # If the connection from the failed open were leaked, this raw
-    # connection on the same file would block on a SQLite busy state.
-    # 250ms is more than enough for the close() to have completed.
-    direct = sqlite3.connect(str(index_path), timeout=0.25)
+    # If open_index leaked its connection on the failure path, this
+    # write would either block until timeout (older SQLite) or fail
+    # immediately with "database is locked" (newer SQLite). 1000ms
+    # is generous — the failed open's close() runs synchronously
+    # before raising, so any honest implementation completes the
+    # write well under the timeout.
+    direct = sqlite3.connect(str(index_path), timeout=1.0, isolation_level=None)
     try:
+        # An exclusive write — bumping user_version to a different
+        # value and reading it back. Both sides exercise the lock.
+        direct.execute(f"PRAGMA user_version = {INDEX_SCHEMA_VERSION + 100}")
         v = direct.execute("PRAGMA user_version").fetchone()[0]
-        assert v == INDEX_SCHEMA_VERSION + 99
+        assert v == INDEX_SCHEMA_VERSION + 100
     finally:
         direct.close()

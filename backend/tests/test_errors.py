@@ -361,9 +361,15 @@ class TestOpenAPISurfaces:
 
     def test_shared_error_responses_use_problem_json(self):
         # mount_frontend=False — see create_app docstring.
+        # Post-Slice-A-finalize: ``IntegrityError`` was removed as a
+        # reusable response component because its wire shape is
+        # structurally identical to ``Internal`` (both 500
+        # problem+json). Per-``code`` discrimination is what
+        # consumers branch on at runtime; both ``code`` values
+        # are listed in the ProblemDetails schema's ``code.examples``.
         app = create_app(mount_frontend=False)
         schema = app.openapi()
-        for name in ("NotFound", "Conflict", "ValidationFailed", "IntegrityError"):
+        for name in ("NotFound", "Conflict", "ValidationFailed", "Internal"):
             resp = schema["components"]["responses"][name]
             assert PROBLEM_JSON_MEDIA_TYPE in resp["content"]
             assert resp["content"][PROBLEM_JSON_MEDIA_TYPE]["schema"] == {
