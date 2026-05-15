@@ -23,7 +23,6 @@ import {
   listAads,
   listContainers,
   listJumpers,
-  listJumps,
   starRig,
   deleteRig,
   reorderRigs,
@@ -177,17 +176,16 @@ export default function MyRig() {
       listAads({ limit: 1000 }),
       listContainers({ limit: 1000 }),
       listJumpers({ limit: 1000 }),
-      // Jumps are optional for the rig view — they only enrich the
-      // component jump counters. Catch locally so a slow/failed
-      // jumps endpoint doesn't block the rig from rendering.
-      listJumps({ limit: 10000 }).catch(() => []),
     ])
-      .then(([rigs, mains, reserves, aads, containers, jumpers, jumps]) => {
+      .then(([rigs, mains, reserves, aads, containers, jumpers]) => {
         if (cancelled) return;
         // v0.1 single-jumper: pick the first jumper for wingloading.
         // When multi-jumper lands, the picker will live on the rig.
         const jumper = jumpers && jumpers.length > 0 ? jumpers[0] : null;
-        const lookups = { mains, reserves, aads, containers, jumper, jumps };
+        // Per-component jump counts are server-derived per D35 — no
+        // listJumps fetch needed here; ``jump_count_total`` rides on
+        // each component response.
+        const lookups = { mains, reserves, aads, containers, jumper };
         setRigShapes(rigs.map((r) => buildRigShape(r, lookups)));
       })
       .catch((err) => {

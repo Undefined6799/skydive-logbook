@@ -65,6 +65,17 @@ class AAD(ComponentBase):
     jump_count_initial: int = Field(default=0, ge=0)
     fire_count_initial: int = Field(default=0, ge=0)
 
+    # D35: derived count of jumps logged against the rig this AAD is
+    # currently assigned to. Read-only output field — populated by
+    # ``aad_service`` on get / list from the SQLite jumps index;
+    # never persisted to ``aad.xml`` (the XSD does not declare it).
+    jump_count_derived: int = Field(default=0, ge=0)
+
+    # D35: display value. See
+    # :class:`backend.models.container.Container.jump_count_total`
+    # for why this is a regular field rather than a computed_field.
+    jump_count_total: int = Field(default=0, ge=0)
+
 
 class AADCreate(BaseModel):
     """Request body for ``POST /api/v1/aads`` (R.0.3+).

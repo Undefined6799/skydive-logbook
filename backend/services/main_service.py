@@ -42,6 +42,7 @@ from ..xml.serialize import element_to_main, main_to_bytes, main_to_element
 from ..xml.validator import XMLError, validate
 from ..xml.validator import parse as xml_parse
 from ._timestamps import now_utc_iso
+from ._wear_counts import count_jumps_per_rig, derived_for
 from ._write_lock import with_writer_lock
 
 _MAINS_DIR = "inventory/mains"
@@ -121,7 +122,39 @@ def create_main(
             "size_sqft": m.size_sqft,
         },
     )
-    return m
+    # D35: stamp the response shape on create so the 201 body
+    # matches a subsequent GET (including the nested lineset's
+    # ``jumps_on_lineset_total`` projection).
+    return _with_derived_counts(m, count_jumps_per_rig(logbook_root))
+
+
+def _with_derived_counts(m: Main, counts_by_rig: dict[UUID, int]) -> Main:
+    """Stamp D35 ``jump_count_derived`` / ``_total`` and the nested
+    lineset's ``jumps_on_lineset_derived`` / ``_total`` from the
+    jumps-per-rig map.
+
+    Per D46 the lineset's per-jump count is meant to be attributed
+    via rig-snapshot.xml (R.4) so the count survives swaps and
+    relines correctly. Until that ships, v0.1 approximates it as
+    "jumps on the rig" — the same number we stamp on the main's
+    own ``jump_count_derived``. When the lineset doesn't change
+    between jumps (the v0.1 common case), the approximation matches
+    exactly; reline + R.4 are what diverge the two values.
+    """
+    derived = derived_for(counts_by_rig, m.assigned_rig_id)
+    update: dict[str, object] = {
+        "jump_count_derived": derived,
+        "jump_count_total": m.jump_count_initial + derived,
+    }
+    if m.current_lineset is not None:
+        ls = m.current_lineset
+        update["current_lineset"] = ls.model_copy(
+            update={
+                "jumps_on_lineset_derived": derived,
+                "jumps_on_lineset_total": ls.jumps_on_lineset_initial + derived,
+            },
+        )
+    return m.model_copy(update=update)
 
 
 def get_main(
@@ -129,9 +162,18 @@ def get_main(
     user_id: str,
     main_id: UUID,
 ) -> Main:
-    """Return the main with the given id, or raise NotFoundError."""
+    """Return the main with the given id, or raise NotFoundError.
+
+    Per D35 the response carries ``jump_count_derived`` /
+    ``jump_count_total`` from the SQLite jumps index. The nested
+    ``current_lineset`` gets its own ``jumps_on_lineset_derived`` /
+    ``jumps_on_lineset_total`` populated by the same scan — see
+    :func:`_with_derived_counts` for the v0.1 attribution
+    approximation.
+    """
     del user_id  # v0.1: see create_main
-    return _read_main(_main_path(logbook_root, main_id))
+    raw = _read_main(_main_path(logbook_root, main_id))
+    return _with_derived_counts(raw, count_jumps_per_rig(logbook_root))
 
 
 @with_writer_lock
@@ -182,6 +224,12 @@ def list_mains(
                 extra={"main_path": str(xml_path), "reason": str(exc)},
             )
             continue
+
+    # D35: one indexed scan over jumps, then per-main lookup. Each
+    # main's nested current_lineset gets the same per-rig count
+    # stamped onto ``jumps_on_lineset_derived`` (v0.1 approximation).
+    counts = count_jumps_per_rig(logbook_root)
+    parsed = [_with_derived_counts(m, counts) for m in parsed]
 
     parsed.sort(key=lambda m: m.created_at or "", reverse=True)
     if offset:
@@ -272,7 +320,7 @@ def update_main(
             "status": merged.status.value,
         },
     )
-    return merged
+    return _with_derived_counts(merged, count_jumps_per_rig(logbook_root))
 
 
 @with_writer_lock

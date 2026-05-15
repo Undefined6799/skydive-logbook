@@ -65,6 +65,22 @@ class Lineset(BaseModel):
     # number.
     jumps_on_lineset_initial: int = Field(default=0, ge=0)
 
+    # D35 / D46: derived count of jumps logged against the rig
+    # holding this lineset. Read-only output field — populated by
+    # ``main_service`` when reading the parent ``Main``; never
+    # persisted to ``main.xml`` (the XSD does not declare it). v0.1
+    # approximates "jumps on this lineset" as "jumps on the rig"
+    # because rig-snapshot.xml's per-jump lineset attribution is
+    # R.4 territory; in the common case where the lineset doesn't
+    # change between jumps the approximation matches exactly.
+    jumps_on_lineset_derived: int = Field(default=0, ge=0)
+
+    # D35: display value — ``initial + derived``. Plain field (not
+    # ``@computed_field``) so ``model_dump()`` stays compatible
+    # with the create-services' ``Model(**Create.model_dump())``
+    # reconstruction pattern.
+    jumps_on_lineset_total: int = Field(default=0, ge=0)
+
 
 class Main(ComponentBase):
     """Canonical main canopy shape.
@@ -106,6 +122,17 @@ class Main(ComponentBase):
 
     # D35: editable seed for the jump counter.
     jump_count_initial: int = Field(default=0, ge=0)
+
+    # D35: derived count of jumps logged against the rig this main
+    # is currently assigned to. Read-only output field — populated
+    # by ``main_service`` on get / list from the SQLite jumps index;
+    # never persisted to ``main.xml`` (the XSD does not declare it).
+    jump_count_derived: int = Field(default=0, ge=0)
+
+    # D35: display value. See
+    # :class:`backend.models.container.Container.jump_count_total`
+    # for why this is a regular field rather than a computed_field.
+    jump_count_total: int = Field(default=0, ge=0)
 
     # Optional. ``None`` means "main has not been lined since
     # onboarding" (e.g. a brand-new main on its factory lines that

@@ -52,6 +52,7 @@ from ..xml.serialize import container_to_bytes, container_to_element, element_to
 from ..xml.validator import XMLError, validate
 from ..xml.validator import parse as xml_parse
 from ._timestamps import now_utc_iso
+from ._wear_counts import count_jumps_per_rig, derived_for
 from ._write_lock import with_writer_lock
 
 # Subdirectory under logbook_root where container XMLs live. Matches
@@ -166,7 +167,29 @@ def create_container(
             "model": c.model,
         },
     )
-    return c
+    # D35: a freshly-created container is unassigned, so derived is
+    # 0 and total == initial. Run the helper anyway so the response
+    # shape matches get_container / list_containers byte-for-byte
+    # (clients don't see a stale ``jump_count_total = 0`` directly
+    # after a 201).
+    return _with_derived_count(c, count_jumps_per_rig(logbook_root))
+
+
+def _with_derived_count(
+    c: Container, counts_by_rig: dict[UUID, int]
+) -> Container:
+    """Stamp D35 ``jump_count_derived`` and ``jump_count_total``
+    from the jumps-per-rig map.
+
+    Returns a fresh Container; the on-disk shape is never mutated.
+    """
+    derived = derived_for(counts_by_rig, c.assigned_rig_id)
+    return c.model_copy(
+        update={
+            "jump_count_derived": derived,
+            "jump_count_total": c.jump_count_initial + derived,
+        },
+    )
 
 
 def get_container(
@@ -174,9 +197,20 @@ def get_container(
     user_id: str,
     container_id: UUID,
 ) -> Container:
-    """Return the container with the given id, or raise NotFoundError."""
+    """Return the container with the given id, or raise NotFoundError.
+
+    Per D35 the response carries ``jump_count_derived`` (count of
+    jumps logged against the rig this container is on) and
+    ``jump_count_total`` (initial + derived) alongside
+    ``jump_count_initial``. The two derived fields come from the
+    SQLite jumps index — never from ``container.xml`` — so the
+    on-disk record stays the editable seed and the projection
+    travels with the response.
+    """
     del user_id  # v0.1: see create_container
-    return _read_container(_container_path(logbook_root, container_id))
+    raw = _read_container(_container_path(logbook_root, container_id))
+    counts = count_jumps_per_rig(logbook_root)
+    return _with_derived_count(raw, counts)
 
 
 @with_writer_lock
@@ -269,6 +303,13 @@ def list_containers(
                 },
             )
             continue
+
+    # D35: enrich every container with ``jump_count_derived`` from a
+    # single jumps-index scan. One SQL pass for N containers beats
+    # the per-item ``count_jumps_for_rig`` call this would
+    # otherwise be.
+    counts = count_jumps_per_rig(logbook_root)
+    parsed = [_with_derived_count(c, counts) for c in parsed]
 
     # Newest first; None timestamps sort last so unstamped legacy
     # records don't crowd the top of the picker.
@@ -368,7 +409,9 @@ def update_container(
             "status": merged.status.value,
         },
     )
-    return merged
+    # D35: stamp ``jump_count_derived`` on the response so the client
+    # render after an edit matches what a follow-up GET would show.
+    return _with_derived_count(merged, count_jumps_per_rig(logbook_root))
 
 
 @with_writer_lock

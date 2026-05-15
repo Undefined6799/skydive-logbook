@@ -99,15 +99,17 @@ function wingloading(jumper, main) {
 
 // Compute D45 lineset wear from a current_lineset record + the
 // active jumper's exit weight (D46: live-read, not snapshotted).
-// ``jumpsLogged`` (default 0) is the count of jumps logged against
-// the rig holding this lineset since the lineset was installed; in
-// v0.1 we approximate "since install" as "since the rig was
-// created" because per-jump lineset attribution from rig-snapshots
-// is R.4 territory. Bumping these here is what makes the in-app
-// jump counters move when the user logs a jump.
+// The backend stamps ``jumps_on_lineset_total = initial + derived``
+// on the response per D35; this function consumes that pre-summed
+// number directly. In v0.1 the derived term approximates "jumps
+// since the lineset was installed" as "jumps logged on the rig"
+// (per-jump lineset attribution via rig-snapshot is R.4); when no
+// swap / reline occurs the approximation matches the rig's count
+// exactly. Older payloads (or hand-edited fixtures) without the
+// derived term fall back to ``jumps_on_lineset_initial``.
 // Returns the denormalized shape MyRig consumes — see the helper
 // comments at the top of the file for the v0.1 caveats.
-function shapeLineset(currentLineset, jumper, jumpsLogged = 0) {
+function shapeLineset(currentLineset, jumper) {
   if (!currentLineset) {
     return {
       type: '—',
@@ -124,9 +126,9 @@ function shapeLineset(currentLineset, jumper, jumpsLogged = 0) {
   }
   const ls = currentLineset;
   const breaking = ls.breaking_strength_lb || 0;
-  // jumps_on_lineset_initial is the pre-logbook seed; logged jumps
-  // since the rig was created add to it.
-  const seedJumps = (ls.jumps_on_lineset_initial || 0) + jumpsLogged;
+  const seedJumps = ls.jumps_on_lineset_total != null
+    ? ls.jumps_on_lineset_total
+    : (ls.jumps_on_lineset_initial || 0);
 
   // D46: total consumed = seed × baseline + consumed_lb_derived.
   // consumed_lb_derived (per-jump Peelman accumulation from
@@ -194,7 +196,7 @@ function shapeLineset(currentLineset, jumper, jumpsLogged = 0) {
 }
 
 
-function shapeMain(main, jumper, jumpsLogged = 0) {
+function shapeMain(main, jumper) {
   if (!main) {
     return {
       id: null,
@@ -203,14 +205,18 @@ function shapeMain(main, jumper, jumpsLogged = 0) {
       size: null,
       jumps: 0,
       dom: null,
-      lineset: shapeLineset(null, jumper, jumpsLogged),
+      lineset: shapeLineset(null, jumper),
       status: 'red',
       notes: [],
     };
   }
-  // Displayed jumps = pre-logbook seed + jumps logged against the
-  // rig this main is currently assigned to.
-  const jumps = (main.jump_count_initial || 0) + jumpsLogged;
+  // D35 per-component jump count: backend supplies
+  // ``jump_count_total = jump_count_initial + jump_count_derived``.
+  // Fall back to ``jump_count_initial`` for older payloads where
+  // the derived term hasn't been wired (e.g. legacy fixtures).
+  const jumps = main.jump_count_total != null
+    ? main.jump_count_total
+    : (main.jump_count_initial || 0);
   return {
     id: main.id,
     brand: main.manufacturer || '—',
@@ -219,7 +225,7 @@ function shapeMain(main, jumper, jumpsLogged = 0) {
     serial: main.serial,
     jumps,
     dom: asMonthYear(main.date_of_manufacture),
-    lineset: shapeLineset(main.current_lineset, jumper, jumpsLogged),
+    lineset: shapeLineset(main.current_lineset, jumper),
     status: main.status === 'active' ? 'green' : 'yellow',
     notes: (main.notes_log || []).map((n) => ({
       date: n.at && n.at.slice(0, 10),
@@ -267,7 +273,7 @@ function shapeReserve(reserve) {
 }
 
 
-function shapeAad(aad, jumpsLogged = 0) {
+function shapeAad(aad) {
   if (!aad) {
     return {
       id: null,
@@ -290,7 +296,9 @@ function shapeAad(aad, jumpsLogged = 0) {
     model: aad.model || 'unknown',
     mode: aad.mode || '—',
     dom: asMonthYear(aad.date_of_manufacture),
-    jumps: (aad.jump_count_initial || 0) + jumpsLogged,
+    jumps: aad.jump_count_total != null
+      ? aad.jump_count_total
+      : (aad.jump_count_initial || 0),
     fires: aad.fire_count_initial || 0,
     // Phase 2 (D39): real service-window / EOL lookup. For now,
     // a placeholder that lights up the UI without lying about a
@@ -310,7 +318,7 @@ function shapeAad(aad, jumpsLogged = 0) {
 }
 
 
-function shapeContainer(container, jumpsLogged = 0) {
+function shapeContainer(container) {
   if (!container) {
     return {
       id: null,
@@ -329,7 +337,9 @@ function shapeContainer(container, jumpsLogged = 0) {
     model: container.model || 'unknown',
     serial: container.serial,
     dom: asMonthYear(container.date_of_manufacture),
-    jumps: (container.jump_count_initial || 0) + jumpsLogged,
+    jumps: container.jump_count_total != null
+      ? container.jump_count_total
+      : (container.jump_count_initial || 0),
     status: container.status === 'active' ? 'green' : 'yellow',
     notes: (container.notes_log || []).map((n) => ({
       date: n.at && n.at.slice(0, 10),
@@ -411,7 +421,8 @@ function findById(list, id) {
  * @param {object} rig - Real Rig record from /api/v1/rigs.
  * @param {object} lookups - { mains, reserves, aads, containers, jumper, today }.
  *   - mains/reserves/aads/containers: arrays from the corresponding
- *     list endpoints.
+ *     list endpoints. Each component carries the D35 derived /
+ *     total jump counts populated server-side.
  *   - jumper: a Jumper record (used for wingloading). Optional.
  *   - today: a Date for repack countdowns. Defaults to now.
  * @returns {object} denormalized rig
@@ -423,21 +434,14 @@ export function buildRigShape(rig, lookups) {
   const aad = findById(lookups.aads, rig.current_aad_id);
   const container = findById(lookups.containers, rig.current_container_id);
 
-  // v0.1 approximation of per-jump-per-component attribution:
-  // count every jump that references this rig and apply that count
-  // to each of the rig's currently-installed components. This is
-  // correct when the user never swaps components mid-rig; it
-  // over-counts for the new component and under-counts for the
-  // replaced one when a swap happens between jumps. The proper
-  // rig-snapshot-based attribution lands in R.4.
-  const jumpsOnRig = (lookups.jumps || []).filter(
-    (j) => j.rig_id != null && j.rig_id === rig.id,
-  ).length;
-
-  const mainShape = shapeMain(main, lookups.jumper, jumpsOnRig);
+  // Per-component jump counts are server-derived per D35
+  // (jump_count_total = initial + derived); no client-side jumps
+  // filter is needed. The previous pre-D35-wiring implementation
+  // walked listJumps and counted ``j.rig_id === rig.id`` here.
+  const mainShape = shapeMain(main, lookups.jumper);
   const reserveShape = shapeReserve(reserve);
-  const aadShape = shapeAad(aad, jumpsOnRig);
-  const containerShape = shapeContainer(container, jumpsOnRig);
+  const aadShape = shapeAad(aad);
+  const containerShape = shapeContainer(container);
 
   const uspaDays = repackCountdown(rig, 'USPA', today);
   const cspaDays = repackCountdown(rig, 'CSPA', today);

@@ -38,6 +38,7 @@ from ..xml.serialize import aad_to_bytes, aad_to_element, element_to_aad
 from ..xml.validator import XMLError, validate
 from ..xml.validator import parse as xml_parse
 from ._timestamps import now_utc_iso
+from ._wear_counts import count_jumps_per_rig, derived_for
 from ._write_lock import with_writer_lock
 
 _AADS_DIR = "inventory/aads"
@@ -116,7 +117,20 @@ def create_aad(
             "model": a.model,
         },
     )
-    return a
+    # D35: stamp the response shape on create so the 201 body
+    # matches a subsequent GET.
+    return _with_derived_count(a, count_jumps_per_rig(logbook_root))
+
+
+def _with_derived_count(a: AAD, counts_by_rig: dict[UUID, int]) -> AAD:
+    """Stamp D35 ``jump_count_derived`` and ``jump_count_total``."""
+    derived = derived_for(counts_by_rig, a.assigned_rig_id)
+    return a.model_copy(
+        update={
+            "jump_count_derived": derived,
+            "jump_count_total": a.jump_count_initial + derived,
+        },
+    )
 
 
 def get_aad(
@@ -124,9 +138,18 @@ def get_aad(
     user_id: str,
     aad_id: UUID,
 ) -> AAD:
-    """Return the AAD with the given id, or raise NotFoundError."""
+    """Return the AAD with the given id, or raise NotFoundError.
+
+    Per D35 the response carries ``jump_count_derived`` /
+    ``jump_count_total`` from the SQLite jumps index (count of jumps
+    logged against the rig this AAD is on). ``fire_count_derived``
+    stays at zero in v0.1 — fires are entered manually at repack
+    time and there is no auto source yet (D35 §"For counters whose
+    derived is always zero in v0.1").
+    """
     del user_id  # v0.1: see create_aad
-    return _read_aad(_aad_path(logbook_root, aad_id))
+    raw = _read_aad(_aad_path(logbook_root, aad_id))
+    return _with_derived_count(raw, count_jumps_per_rig(logbook_root))
 
 
 @with_writer_lock
@@ -180,6 +203,10 @@ def list_aads(
                 extra={"aad_path": str(xml_path), "reason": str(exc)},
             )
             continue
+
+    # D35: one indexed scan over jumps, then per-AAD lookup.
+    counts = count_jumps_per_rig(logbook_root)
+    parsed = [_with_derived_count(a, counts) for a in parsed]
 
     parsed.sort(key=lambda a: a.created_at or "", reverse=True)
     if offset:
@@ -258,7 +285,7 @@ def update_aad(
             "status": merged.status.value,
         },
     )
-    return merged
+    return _with_derived_count(merged, count_jumps_per_rig(logbook_root))
 
 
 @with_writer_lock

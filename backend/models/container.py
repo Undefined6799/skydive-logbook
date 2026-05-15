@@ -54,6 +54,26 @@ class Container(ComponentBase):
     # ``jump_count_initial + jump_count_derived``.
     jump_count_initial: int = Field(default=0, ge=0)
 
+    # D35: derived count of jumps logged against the rig this
+    # container is currently assigned to. Read-only output field —
+    # populated by ``container_service`` on get / list from the
+    # SQLite jumps index; never persisted to ``container.xml`` (the
+    # XSD does not declare it). Defaults to 0 so a Container parsed
+    # from XML or constructed bare (tests, fresh-create) carries the
+    # right shape even when no enrichment step ran.
+    jump_count_derived: int = Field(default=0, ge=0)
+
+    # D35: display value — ``initial + derived``. A regular field
+    # (not ``@computed_field``) so ``model_dump()`` stays compatible
+    # with the existing ``Model(**MainCreate.model_dump())``
+    # reconstruction pattern in the create services (a computed
+    # field would round-trip through dump and be rejected by
+    # ``extra="forbid"`` on reconstruction). The service layer
+    # stamps this in the same step as ``jump_count_derived`` so the
+    # invariant ``total == initial + derived`` holds on every
+    # response.
+    jump_count_total: int = Field(default=0, ge=0)
+
 
 class ContainerCreate(BaseModel):
     """Request body for ``POST /api/v1/containers`` (R.0.3+).

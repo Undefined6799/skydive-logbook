@@ -46,7 +46,26 @@ from backend.models.rig import Rig
 # Pydantic field names that are deliberately NOT serialized to XML.
 # Each entry is justified — anything else added here without rationale
 # is a code-review smell.
-_NON_XML_FIELDS: dict[type[BaseModel], frozenset[str]] = {}
+#
+# Main / AAD / Container ``jump_count_derived`` + ``jump_count_total``
+# are D35 response-only projections: the derived count is rebuilt
+# from the SQLite jumps index on every read, and the total is the
+# sum of initial + derived. D35 §"Component XSDs declare only the
+# ``<*_initial>`` fields" forbids them from ever appearing in the
+# on-disk XML — they ride only on API responses (Pydantic includes
+# them in model_dump, which is what the REST layer serializes). The
+# serializer enumerates fields by name so it naturally omits these;
+# the XSD never declares them. The companion
+# ``jumps_on_lineset_derived`` / ``_total`` on the nested Lineset
+# follow the same rule but are not enumerated here because
+# ``Main.model_fields`` only walks top-level field names; the
+# Lineset projections are caught by Lineset's own ``extra="forbid"``
+# at construction time.
+_NON_XML_FIELDS: dict[type[BaseModel], frozenset[str]] = {
+    Main: frozenset({"jump_count_derived", "jump_count_total"}),
+    AAD: frozenset({"jump_count_derived", "jump_count_total"}),
+    Container: frozenset({"jump_count_derived", "jump_count_total"}),
+}
 
 _SERIALIZE_SOURCE = (
     Path(__file__).resolve().parents[1] / "xml" / "serialize.py"
