@@ -76,9 +76,11 @@ API surface, concurrency model, etc.):
    `# Per D10: atomic_write fsyncs before os.replace`).
 
 Deferred items in `DECISIONS.md` (FlySight parsing, digital
-signatures, multi-user, imports, video, mobile, headless-server,
-auto-update) are **binding non-decisions**. Do not pull them into
-scope without an explicit scope change from Alex.
+signatures, multi-user, imports, video, mobile, headless-server)
+are **binding non-decisions**. Do not pull them into scope without
+an explicit scope change from Alex. Auto-update was previously
+deferred but is now scoped for v0.2 per D64 (in-app, EdDSA-signed,
+free path).
 
 ---
 

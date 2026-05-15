@@ -6566,3 +6566,290 @@ needs corporate adoption to succeed.
   release prep).
 - GPL-3.0 canonical text — https://www.gnu.org/licenses/gpl-3.0.txt
 - Choose a License — https://choosealicense.com/licenses/gpl-3.0/
+
+
+## D64 — In-app auto-update for v0.2; EdDSA-signed, free path
+
+**Decision.** v0.2 ships a user-initiated in-app auto-updater that
+downloads, verifies, and applies a new binary without requiring the
+user to leave the app. The flow is **app-level signed** (Ed25519
+signatures over the release manifest), **not OS-signed** — no paid
+Apple Developer ID or Authenticode certificate is required. D52's
+re-evaluation trigger ("real auto-update must be signed at the OS
+level *or* at the app level — the successor decision picks one")
+fires here in favor of app-level. Auto-update is no longer deferred
+per CLAUDE.md §10.
+
+The flow is **user-triggered, not silent**. The existing *Check for
+updates* button in Settings (D52) gains a second action — *Download
+and install* — surfaced only when an update is actually available.
+There is no background download, no auto-apply on launch, no "the
+app updated itself overnight" anti-pattern.
+
+**Why.**
+
+- D52's deferral of auto-update was tied to the cost of OS-level
+  signing certificates. App-level signing using Ed25519 (the
+  Sparkle-style approach) sidesteps that cost entirely while still
+  meeting D52's re-evaluation requirement that "real auto-update
+  must be signed."
+- Once external users install the app, every bug fix is friction
+  unless the update path is one-click. Manual download-and-replace
+  is acceptable for v0.1's pre-user phase; it's a tax on every
+  fix once users exist.
+- App-level signing is a stronger threat-model fit than relying on
+  GitHub Releases' HTTPS alone. A signature pinned to a key embedded
+  at build time defends against GitHub compromise, mirror tampering,
+  and malicious release-asset replacement — none of which OS-level
+  signing alone defends against either.
+- User-initiated (not silent) preserves the transparency property
+  D52's manual download path provided: the user sees the new
+  version, consents to the install, and watches it apply.
+
+**Architecture.**
+
+- **Signing key.** A single Ed25519 keypair governs releases for
+  the lifetime of this decision. The **public key** is embedded
+  into the app at build time (constant in Python source, no
+  network fetch). The **private key** lives offline in the
+  maintainer's password manager and is loaded into CI as a
+  GitHub Actions secret (`UPDATE_SIGNING_KEY`) only during the
+  release-tag workflow. Key rotation requires a new D-entry and
+  a transitional dual-key build.
+- **Release manifest.** Every signed release publishes three
+  assets in addition to the platform binaries:
+  - `SHA256SUMS` — line-per-asset SHA-256, plain text.
+  - `SHA256SUMS.sig` — detached Ed25519 signature over the bytes
+    of `SHA256SUMS` (64-byte raw signature).
+  - `release.json` — small JSON manifest with `version`,
+    `release_url`, per-platform `{filename, size, sha256}` entries.
+    Used by the updater to pick the right asset without parsing
+    asset filenames.
+- **Update flow.**
+  1. User clicks *Check for updates* → existing
+     `GET /api/v1/updates/check` returns `update_available`.
+  2. UI shows *Download and install* button.
+  3. User clicks → frontend calls
+     `POST /api/v1/updates/download`. Backend:
+     a. Pre-flight: free space in the OS temp dir ≥ asset size +
+        100 MiB headroom. If not, return 507
+        `update_no_space` (problem+json).
+     b. Stream the platform asset to a temp file (resumable
+        on second attempt is *not* a v0.2 requirement —
+        re-download from zero is acceptable).
+     c. Stream `SHA256SUMS` and `SHA256SUMS.sig`.
+     d. Verify Ed25519 signature on `SHA256SUMS` against the
+        embedded public key. Mismatch → delete temp files,
+        return 502 `update_signature_invalid`.
+     e. Verify the downloaded asset's SHA-256 against the
+        corresponding entry in `SHA256SUMS`. Mismatch → delete
+        temp, return 502 `update_hash_mismatch`.
+     f. Persist `{verified_asset_path, target_version}` into a
+        process-scoped state slot. Return 200 with that state.
+  4. UI shows *Quit and install*.
+  5. User clicks → frontend calls
+     `POST /api/v1/updates/apply`. Backend:
+     a. Writes the per-platform helper script to a known temp
+        path. Spawns it detached with `start_new_session=True`
+        (POSIX) / `DETACHED_PROCESS` (Windows). Helper script
+        immediately sleeps ~1.5s to give the parent process time
+        to exit cleanly.
+     b. Writes a marker file at
+        `user_config_dir/update_pending.json` with the target
+        version. The new app reads this on boot and shows a
+        toast.
+     c. Returns 202 (Accepted) and immediately schedules a
+        clean shutdown (FastAPI lifespan + pywebview window
+        close).
+  6. Helper waits for the parent PID to die (polling with a 30s
+     timeout), performs the platform swap, and relaunches the
+     app.
+  7. New app boots, reads the marker, shows
+     *Updated to vX.Y.Z*, deletes the marker, and resumes
+     normal operation.
+- **Telemetry.** Every state transition (download started, hash
+  verified, signature verified, swap initiated, swap succeeded,
+  any failure with kind+detail) logs to the D27 rotating log at
+  INFO (success path) / ERROR (failures). Silent failures are
+  the worst class of update bug — instrumentation is mandatory
+  for this feature.
+
+**Verification & threat model.**
+
+- TLS to GitHub establishes that we're talking to GitHub. Ed25519
+  signature verification establishes that the *content* came from
+  the maintainer, regardless of what GitHub or any mirror says.
+  Both layers must pass.
+- The embedded public key is the trust anchor. Compromising it
+  requires compromising the build pipeline at release time.
+- Compromising the private key (laptop loss, password-manager
+  breach) requires a new keypair, a new D-entry, and a
+  transitional dual-key build (next version accepts either old
+  or new key; subsequent versions accept only new). Out of scope
+  for v0.2; documented as a known operational risk.
+- This scheme does **not** defend against the OS itself being
+  compromised, against malicious builds shipped to the public
+  release pipeline by an attacker with maintainer credentials,
+  or against the user manually downloading and running an
+  unsigned binary. None of those are in scope for the free path.
+- macOS quarantine (`com.apple.quarantine` xattr) is stripped by
+  the running, already-trusted parent process before the swap.
+  This is the same technique Sparkle uses without Developer ID;
+  Apple has not removed it as of macOS 15. Documented as a
+  re-evaluation trigger if Apple clamps down.
+
+**Per-platform swap mechanics.**
+
+- **Linux (AppImage).** Atomic. The helper script `chmod +x` the
+  new file, `os.replace`s it over the old AppImage path, and
+  `execv`s the new file. No external helper needed; the running
+  AppImage's content lives in a mount that survives until the
+  process exits.
+- **macOS (`.app` bundle).** The helper is a small shell script
+  written to `$TMPDIR/skydive-update-helper-<pid>.sh`. It:
+  1. Waits for the parent PID to exit (`while kill -0 $PPID`).
+  2. `xattr -d com.apple.quarantine` on the new `.app` (the
+     download itself was quarantined; we strip it inside the
+     trusted process tree so the swap is treated as a
+     continuation rather than a fresh install).
+  3. `rm -rf` the old `.app`, `mv` the new one in place.
+  4. `open` the new app.
+  5. Deletes itself.
+- **Windows (`.exe`).** A `.bat` helper at
+  `%TEMP%\skydive-update-helper-<pid>.bat`:
+  1. Polls for the parent PID's exit
+     (`tasklist /FI "PID eq %PARENT_PID%"`).
+  2. `move /Y` the new `.exe` over the old one.
+  3. `start ""` the new `.exe`.
+  4. `del` itself via a queued delayed delete.
+
+**REST API surface.**
+
+- `GET /api/v1/updates/check` — unchanged (D52).
+- `POST /api/v1/updates/download` — new. Returns 200 with
+  `{verified, version, asset_path}` on success; problem+json
+  on failure (`update_no_space`, `update_signature_invalid`,
+  `update_hash_mismatch`, `update_download_failed`).
+- `POST /api/v1/updates/apply` — new. Returns 202; the
+  app proceeds to shut down after the response is flushed.
+
+**Consequences.**
+
+- New module `backend/services/update_install_service.py` for the
+  download + verify + apply orchestrator. Per-platform swap logic
+  in `backend/services/update_install_<platform>.py` modules
+  dispatched at runtime.
+- Helper script templates ship under
+  `scripts/packaging/{macos,windows,linux}/update_helper.*`.
+- The CI release workflow gains a *signing* step: after building
+  all platform artifacts, it generates `SHA256SUMS` and
+  `release.json`, signs `SHA256SUMS` with the Ed25519 private
+  key (`UPDATE_SIGNING_KEY` secret), and uploads all three
+  alongside the binaries to the GitHub Release.
+- The PyInstaller / py2app specs gain an embedded
+  `update_signing_pubkey.txt` in the bundle's resources.
+- `backend/observability/` gains structured log events for the
+  six update state transitions, all tagged
+  `event=update.<phase>`.
+- `pyproject.toml` gains `cryptography>=42` (Ed25519 verification).
+  The dependency is already present transitively but pinned
+  explicitly to make the signature path's dependency surface
+  visible.
+- This decision augments D52 rather than superseding it: D52's
+  baseline (unsigned binaries, no OS-level signing for v0.1) still
+  applies to *binary trust on first install*. D64 adds app-level
+  signing only to the *update channel* — the user still
+  bypasses Gatekeeper/SmartScreen on first install per D52.
+
+**Phasing.** Each phase ships as a small, independently-verifiable
+slice per CLAUDE.md §3.
+
+- **U.0** — This D-entry; update CLAUDE.md §10 to remove
+  auto-update from the deferred list.
+- **U.1** — CI publishes `SHA256SUMS`, `SHA256SUMS.sig`, and
+  `release.json` on every signed release. Documentation for the
+  maintainer's signing-key generation and storage workflow.
+- **U.2** — Backend download + verify endpoint with the embedded
+  public key. Frontend wires a *Download update* button that
+  shows the verified state. **No swap yet** — user replaces
+  manually. This is end-to-end useful on its own (verified
+  downloads > unverified ones).
+- **U.3** — Linux AppImage swap helper + *Quit and install* UX.
+  First platform with one-click update; smallest swap mechanism.
+- **U.4** — macOS `.app` swap helper with quarantine-strip.
+- **U.5** — Windows `.exe` `.bat` helper.
+- **U.6** — Post-update marker, *Updated to vX.Y.Z* toast,
+  error/retry states, mid-download abort paths, full failure-mode
+  test matrix.
+
+**Re-evaluation triggers.** This decision flips when any of:
+
+- Apple removes quarantine-strip from the OS (macOS swap stops
+  working). Triggers a successor decision: OS-level signing
+  (Developer ID + notarization) becomes mandatory on macOS.
+- Windows tightens SmartScreen such that unsigned `.exe` updates
+  are blocked outright (rather than warned). Triggers
+  Authenticode signing on Windows.
+- The user base exceeds the level where the Windows SmartScreen
+  warning becomes a meaningful support burden. Triggers
+  Authenticode (D52 re-evaluation trigger #2).
+- App Store / Microsoft Store distribution becomes a goal (D52
+  re-evaluation trigger #4). Stores enforce OS-level signing
+  and disallow side-loaded auto-update channels.
+- The signing private key is suspected compromised. Triggers an
+  emergency successor decision with a key rotation transition.
+
+**Alternatives considered.**
+
+- *(Wait for OS-level signing certs, defer auto-update to v0.3)*
+  Rejected. The user friction of "every update is a manual
+  download" was specifically called out as the motivation for
+  doing this now. Waiting on certs delays the user-visible win
+  by months while solving the wrong problem (certs reduce
+  install friction; auto-update reduces update friction —
+  different).
+- *(Silent background auto-update on launch)* Rejected on
+  transparency grounds. The user should always consent to the
+  app being replaced. Maintainer trust is preserved by making
+  the consent moment obvious. Re-evaluate if user feedback says
+  the confirmation step is too much friction.
+- *(GitHub Releases trust alone — HTTPS, no signature)* Rejected.
+  GitHub is a single point of compromise; a malicious push to
+  the release tag could ship a backdoored binary to every user.
+  Ed25519 signatures pin trust to a key the maintainer controls.
+- *(GPG signatures instead of Ed25519)* Rejected on UX and
+  surface-area grounds. GPG drags in a heavy crypto stack, a key
+  ring, and a model designed for human-to-human trust. Ed25519
+  via `cryptography.hazmat` is a one-call verify, one-call sign,
+  no key ring, no expiry, no revocation — the right primitive
+  for machine-to-machine release-asset signing. Sparkle uses
+  exactly this design.
+- *(Differential updates / delta patches)* Rejected for v0.2.
+  Full-binary updates are simpler and the binary is small
+  (~80 MiB packed). Revisit if bandwidth or download time becomes
+  a complaint.
+- *(Pre-release / beta channel toggle in Settings)* Deferred to
+  v0.3. v0.2 ships **stable channel only** — `update_check_repo`
+  points at the canonical repo and the updater consumes the
+  latest non-prerelease tag. A Settings toggle for opting into
+  pre-releases is a small addition once the stable path is solid.
+
+**References.**
+
+- D11 — Packaging via PyInstaller/py2app; the bundle layout this
+  feature operates on.
+- D14 — v0.1 scope. Auto-update was originally deferred here;
+  CLAUDE.md §10 mirrored that. Both are updated by this entry.
+- D16 — RFC 9457 problem+json error shape; all the update
+  failure modes return this.
+- D20 — `user_config_dir`; that's where the update-pending
+  marker file lives.
+- D27 — Rotating log sink; update telemetry writes here.
+- D52 — Unsigned binaries for v0.1; whose re-evaluation trigger
+  ("real auto-update must be signed at OS or app level") fires
+  here in favor of app-level Ed25519.
+- D63 — GPL-3.0; the helper scripts inherit the same license.
+- Sparkle's EdDSA signing flow —
+  https://sparkle-project.org/documentation/ed-signatures/
+- `cryptography` Ed25519 docs —
+  https://cryptography.io/en/latest/hazmat/primitives/asymmetric/ed25519/
