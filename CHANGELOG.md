@@ -9,7 +9,15 @@ on the major / minor / patch number.
 ## [0.1.0-beta.1] — initial public beta
 
 First public release. This is a beta — the on-disk format is stable
-(D2 + D18) but the desktop UX still has rough edges. Self-hosted,
+(D2 + D18) but the desktop UX still has rough edges.
+
+### Licensing
+- **Project license is now GPL-3.0** (was MIT in pre-public commits;
+  see D63 in DECISIONS.md). Forks must remain open-source under
+  GPL-3.0; end-user installation, modification, and use are
+  unchanged.
+
+Self-hosted,
 single-user, loopback-only (D48); your data stays on your machine.
 
 ### Added — backend

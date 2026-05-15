@@ -40,7 +40,7 @@ skydive-logbook/
 ├── README.md
 ├── DECISIONS.md                 # canonical decision record
 ├── ARCHITECTURE.md              # this file
-├── LICENSE                      # MIT
+├── LICENSE                      # GPL-3.0
 ├── config.toml.example          # logbook_root, port, etc.
 ├── backend/
 │   ├── main.py                  # acquires lock, boots REST, (later) launches webview

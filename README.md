@@ -3,7 +3,7 @@
 > A self-hosted skydiving logbook that respects your ownership of your data.
 
 [![CI](https://img.shields.io/github/actions/workflow/status/Undefined6799/skydive-logbook/ci.yml?branch=main&label=CI)](https://github.com/Undefined6799/skydive-logbook/actions/workflows/ci.yml)
-[![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
+[![License: GPL v3](https://img.shields.io/badge/license-GPLv3-blue.svg)](LICENSE)
 [![Python](https://img.shields.io/badge/python-3.11%20|%203.12%20|%203.13-blue.svg)](pyproject.toml)
 [![Status](https://img.shields.io/badge/status-beta-blue.svg)](DECISIONS.md)
 
@@ -338,8 +338,13 @@ reporting flow.
 
 ## License
 
-[MIT](LICENSE). You owe nothing back; you give up nothing on the way
-in.
+[GPL-3.0](LICENSE). Free to use, modify, and distribute — with one
+condition: any forks or derivative works must also be released under
+GPL-3.0 and keep their source code open. The "you can take my work
+and make it proprietary" loophole is closed by design.
+
+Switched from MIT to GPL-3.0 with v0.1.0-beta.1; see D63 in
+DECISIONS.md for the reasoning.
 
 ## Code of conduct
 

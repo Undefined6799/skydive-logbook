@@ -16,7 +16,8 @@ two things that matter most.
   issue (or proposed in a new one first) are the path that lands.
 
 If that doesn't match your timeline, that's fine — fork it, use it,
-ship something. The MIT license means you owe nothing back.
+ship something. The GPL-3.0 license means your fork must stay open
+source under GPL-3.0 too; nothing else.
 
 ## How to report something
 
@@ -158,7 +159,10 @@ A PR adding any of the above will be closed as out-of-scope.
 ## License
 
 By submitting a contribution you agree your work is offered under the
-project's [MIT license](LICENSE). There's no CLA.
+project's [GPL-3.0 license](LICENSE). There's no CLA — but by
+submitting you confirm you have the right to release the code under
+GPL-3.0 (it's your work, or you have permission from whoever does
+own it).
 
 ## Code of Conduct
 

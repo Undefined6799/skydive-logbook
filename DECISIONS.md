@@ -6479,3 +6479,90 @@ recovery, not active correctness.
   of historical trash failing post-rename.
 - D61 — Renamed `fun_jump → regular_jump` in-place pre-release.
   Same cause class as D57; same fix class as D62.
+
+
+## D63 — License: GPL-3.0; supersedes D13
+
+**Decision.** The project is licensed under GPL-3.0 (see ``LICENSE``
+at the repository root). Supersedes D13 (MIT). The change happened
+with the v0.1.0-beta.1 release prep, before any external contributor
+PR — relicensing was a one-line edit; once external commits land
+the same change would require permission from every contributor.
+
+**Why.** The MIT framing in D13 was "low friction for users, forks,
+and downstream commercial use." That framing assumed the project's
+risk surface was *adoption* — that any restriction would limit
+uptake. After the v0.1.0-beta.1 review the maintainer surfaced a
+different concern: a permissively-licensed fork can be taken
+closed-source, modified, and distributed without contributing
+improvements back. MIT does nothing to prevent that. GPL-3.0
+specifically does — derivative works must remain open and GPL-3.0
+licensed, so any improvement that ships to users is required to
+flow back to the community.
+
+The realistic threat model for this project (a niche self-hosted
+skydiving logbook) is small — there is no obvious commercial
+exploitation surface, and AGPL-style network-clauses are overkill
+for a desktop app. GPL-3.0 strikes the balance: end users notice
+no difference (they can still install, use, and modify freely),
+but commercial forks have a binding obligation to share back.
+
+The trade-off accepted: corporate contributors are more cautious
+about GPL than MIT. We accept that — this isn't a project that
+needs corporate adoption to succeed.
+
+**Consequences.**
+
+- ``LICENSE`` replaced with the canonical GNU GPL-3.0 text from
+  https://www.gnu.org/licenses/gpl-3.0.txt.
+- ``pyproject.toml`` classifier flipped from ``MIT License`` to
+  ``GNU General Public License v3 (GPLv3)``.
+- README badge, License section, and Settings → About card all
+  display GPL-3.0.
+- ``CONTRIBUTING.md`` notes that contributions are offered under
+  GPL-3.0; no CLA, but contributors confirm they have the right to
+  release the code under GPL-3.0.
+- D13 is marked superseded; the file remains in place per the
+  project's "supersede, don't edit" rule (CLAUDE.md §4).
+- The previous initial commit (``d0e30b8``, MIT-licensed) is on
+  the public ``main`` branch. Any redistribution of *that exact
+  commit* by a third party can rely on MIT terms — git history is
+  immutable. From the GPL-3.0 commit forward, GPL-3.0 governs.
+  This is the standard "relicensing of future versions" pattern
+  every OSS project uses; it is not a defect.
+
+**Re-evaluation triggers.** This decision flips when any of:
+
+- The project gains traction with a corporate user who would only
+  contribute under a permissive license, AND the maintainer wants
+  that contribution badly enough to relax. Practically requires
+  contributor consent.
+- A future commercial dual-license model lands (GPL community use
+  + paid commercial license). That augments rather than replaces
+  D63; AGPL-3.0 is usually the right base for the GPL half of a
+  dual-license setup.
+
+**Alternatives considered.**
+
+- *(MIT, status quo)* Rejected for the closed-source-fork concern
+  above.
+- *(Apache 2.0)* More permissive than GPL but with explicit patent
+  grant. Doesn't address the closed-fork concern; rejected on the
+  same grounds as MIT.
+- *(AGPL-3.0)* Stronger copyleft (covers SaaS network use). For a
+  desktop app distributed as a binary, the network clause has no
+  effect on the realistic threat model — a SaaS-of-skydive-logbook
+  isn't a real risk surface. Reserved as the right answer if
+  dual-licensing arrives.
+- *(BUSL / PolyForm Noncommercial)* Source-available rather than
+  open source. Not OSI-approved; would kill adoption to defend
+  against a commercial-exploitation scenario that isn't realistic
+  here. Rejected.
+
+**References.**
+
+- D13 — original MIT decision (superseded).
+- 2026-05-14 conversation that triggered the relicense (v0.1.0-beta.1
+  release prep).
+- GPL-3.0 canonical text — https://www.gnu.org/licenses/gpl-3.0.txt
+- Choose a License — https://choosealicense.com/licenses/gpl-3.0/

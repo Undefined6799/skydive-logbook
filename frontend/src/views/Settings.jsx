@@ -561,9 +561,9 @@ function AboutSection() {
         <span className="text-neutral-500">Schema</span>
         <span className="text-neutral-300 font-mono">v1</span>
         <span className="text-neutral-500">License</span>
-        <span className="text-neutral-300">MIT</span>
+        <span className="text-neutral-300">GPL-3.0</span>
         <span className="text-neutral-500">Source</span>
-        <span className="text-neutral-300 font-mono">github.com/.../skydive-logbook</span>
+        <span className="text-neutral-300 font-mono">github.com/Undefined6799/skydive-logbook</span>
       </div>
     </Card>
   );
