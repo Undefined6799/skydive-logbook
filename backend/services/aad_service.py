@@ -312,7 +312,7 @@ def delete_aad(
         "aad_deleted",
         extra={
             "aad_id": str(aad_id),
-            "trashed_to": str(trashed.relative_to(logbook_root)),
+            "trashed_to": trashed.relative_to(logbook_root).as_posix(),
         },
     )
     return trashed

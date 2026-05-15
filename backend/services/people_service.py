@@ -379,7 +379,7 @@ def delete_person(
         "person_deleted",
         extra={
             "person_id": str(person_id),
-            "trashed_to": str(trashed.relative_to(logbook_root)),
+            "trashed_to": trashed.relative_to(logbook_root).as_posix(),
         },
     )
     return trashed

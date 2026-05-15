@@ -1247,6 +1247,6 @@ def delete_jump(
             "jump_id": str(jump_id),
             "user_id": user_id,
             "folder": folder_rel,
-            "trashed_to": str(trashed.relative_to(logbook_root)),
+            "trashed_to": trashed.relative_to(logbook_root).as_posix(),
         },
     )

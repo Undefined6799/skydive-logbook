@@ -1172,7 +1172,7 @@ def delete_rig(
         extra={
             "rig_id": str(rig_id),
             "rig_nickname": folder.name,
-            "trashed_to": str(trashed.relative_to(logbook_root)),
+            "trashed_to": trashed.relative_to(logbook_root).as_posix(),
         },
     )
     return trashed

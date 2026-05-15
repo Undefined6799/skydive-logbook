@@ -343,7 +343,7 @@ def delete_main(
         "main_deleted",
         extra={
             "main_id": str(main_id),
-            "trashed_to": str(trashed.relative_to(logbook_root)),
+            "trashed_to": trashed.relative_to(logbook_root).as_posix(),
         },
     )
     return trashed

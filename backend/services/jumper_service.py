@@ -483,7 +483,7 @@ def delete_jumper(
         "jumper_deleted",
         extra={
             "jumper_id": str(jumper_id),
-            "trashed_to": str(trashed.relative_to(logbook_root)),
+            "trashed_to": trashed.relative_to(logbook_root).as_posix(),
         },
     )
     return trashed

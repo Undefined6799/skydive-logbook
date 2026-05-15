@@ -280,7 +280,7 @@ def delete_reserve(
         "reserve_deleted",
         extra={
             "reserve_id": str(reserve_id),
-            "trashed_to": str(trashed.relative_to(logbook_root)),
+            "trashed_to": trashed.relative_to(logbook_root).as_posix(),
         },
     )
     return trashed
