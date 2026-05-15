@@ -74,10 +74,14 @@ export default function App() {
         .then((state) => { if (!cancelled) setOnboardingState(state); })
         .catch(() => { /* keep previous state */ });
       setResumeOverride(true);
-      // Make sure the user lands on Profile after dismissing — the
-      // sidebar may have been on a different tab when they clicked
-      // "Resume setup", and the wizard overlay covers it anyway.
-      setActiveTab('profile');
+      // Land on Dashboard after the wizard dismisses — that's where
+      // the ResumeBanner lives and where the user's stats render.
+      // The pre-D65 cleanup that moved Identity into Settings also
+      // dropped the Profile tab; the prior literal here was
+      // 'profile' (no matching VIEWS key), which fell through the
+      // ``|| Dashboard`` fallback at the cost of leaving the sidebar
+      // with no highlighted tab after wizard dismiss.
+      setActiveTab('dashboard');
     }
     window.addEventListener(ONBOARDING_RESUME_EVENT, handleResume);
     return () => {
