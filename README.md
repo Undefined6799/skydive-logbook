@@ -174,20 +174,52 @@ python -m backend.scripts.verify --logbook-root <logbook_root>
 
 ### Installing the v0.1.0-beta.1 binary
 
-When prebuilt binaries are published, install per platform:
+#### macOS (Apple Silicon — M1, M2, M3, M4)
 
-- **macOS** (`.dmg` or `.app`): Move the app to `/Applications`,
-  then **right-click → Open** the first time. Gatekeeper will warn
-  that the app is unsigned; choose *Open*. Subsequent launches work
-  with a double-click.
-- **Windows** (`.exe` or `.msi`): Run the installer. SmartScreen will
-  show *"Windows protected your PC"* — click **More info** →
-  **Run anyway**.
-- **Linux** (`.AppImage`): `chmod +x` the AppImage, then run it.
-  No gatekeeper.
+1. Download the
+   [`SkydiveLogbook-0.1.0-beta.1-macos-arm64.dmg`](https://github.com/Undefined6799/skydive-logbook/releases/latest)
+   asset from the latest release.
+2. Double-click the .dmg → drag `Skydive Logbook` onto the
+   `Applications` shortcut → eject the disk image.
+3. Open the app for the first time. The flow depends on your macOS
+   version:
 
-If you'd rather check for updates yourself, the app has a button for
-that under **Settings → Updates**.
+   - **Sequoia (15) and later (Tahoe / 26):** Apple removed the
+     right-click → Open bypass. Try to open it; the *"could not
+     verify... Move to Trash / Done"* dialog has **no Open option**.
+     Click **Done**, then go to **System Settings → Privacy &
+     Security**, scroll to *Security*, find *"Skydive Logbook" was
+     blocked to protect your Mac*, click **Open Anyway**, and
+     authenticate. Re-launch the app and click **Open** in the
+     final confirmation.
+   - **Sonoma (14) and earlier:** Right-click `Skydive Logbook`
+     in Applications → **Open** → click **Open** in the warning.
+   - **Faster terminal alternative (any version):**
+     `xattr -dr com.apple.quarantine "/Applications/Skydive Logbook.app"`
+     strips the quarantine flag and lets the app launch with no
+     warnings ever.
+
+   After this one-time approval, double-clicking works normally.
+
+#### Windows / Linux
+
+Pre-built binaries are not yet attached. Build from source — see
+*Building from source* below — or wait for a later beta.
+
+#### Once it's running
+
+The app asks you where to put your logbook folder (default
+`~/SkydiveLogbook`). After that, you're in.
+
+The Settings → *Check for updates* button is hidden until you
+configure your fork's repo. Edit
+`~/Library/Application Support/skydive-logbook/config.toml` and add:
+
+```toml
+update_check_repo = "Undefined6799/skydive-logbook"
+```
+
+(Replace with whichever fork you want to track.)
 
 ### Building from source
 
